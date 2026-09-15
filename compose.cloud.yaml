@@ -1,0 +1,23 @@
+# Run with: docker compose -f compose.yaml -f compose.cloud.yaml up --build -d
+services:
+  schema-workspace:
+    environment:
+      PUBLIC_URL: https://${APP_DOMAIN:?Set APP_DOMAIN to your cloud hostname}
+      APP_SECRET: ${APP_SECRET:?Set a strong permanent APP_SECRET}
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN to your cloud hostname}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - schema-workspace
+volumes:
+  caddy-data:
+  caddy-config:

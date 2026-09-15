@@ -1,0 +1,58 @@
+name: schegen-integration
+services:
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: fixture-root-only
+      MARIADB_DATABASE: wordpress_fixture
+      MARIADB_USER: fixture
+      MARIADB_PASSWORD: fixture-only
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  wp-a:
+    image: wordpress:php8.3-apache
+    ports: ["127.0.0.1:8091:80"]
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: wordpress_fixture
+      WORDPRESS_DB_USER: fixture
+      WORDPRESS_DB_PASSWORD: fixture-only
+      WORDPRESS_TABLE_PREFIX: alpha_
+      FIXTURE_URL: http://127.0.0.1:8091
+      FIXTURE_KEY: editorial_jsonld
+      FIXTURE_ENCODING: json-string
+    volumes:
+      - wp-a:/var/www/html
+      - ./fixture.php:/var/www/html/wp-content/mu-plugins/schema-fixture.php:ro
+      - ./initialize.php:/fixture/initialize.php:ro
+      - ../../wordpress/schema-workspace.php:/var/www/html/wp-content/plugins/schema-workspace.php:ro
+    depends_on:
+      db: { condition: service_healthy }
+  wp-b:
+    image: wordpress:php8.3-apache
+    ports: ["127.0.0.1:8092:80"]
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: wordpress_fixture
+      WORDPRESS_DB_USER: fixture
+      WORDPRESS_DB_PASSWORD: fixture-only
+      WORDPRESS_TABLE_PREFIX: client_b_42_
+      FIXTURE_URL: http://127.0.0.1:8092
+      FIXTURE_KEY: _client_graph
+      FIXTURE_ENCODING: object
+    volumes:
+      - wp-b:/var/www/html
+      - ./fixture.php:/var/www/html/wp-content/mu-plugins/schema-fixture.php:ro
+      - ./initialize.php:/fixture/initialize.php:ro
+      - ../../wordpress/schema-workspace.php:/var/www/html/wp-content/plugins/schema-workspace.php:ro
+    depends_on:
+      db: { condition: service_healthy }
+volumes:
+  db:
+  wp-a:
+  wp-b:

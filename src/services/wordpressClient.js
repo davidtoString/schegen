@@ -11,9 +11,12 @@ const axios = require('axios');
  * @param {string} appPassword - WordPress Application Password
  * @returns {object} - Client methods
  */
-function create(siteUrl, username, appPassword) {
+function create(siteUrl, username, appPassword, options = {}) {
   const baseUrl = siteUrl.replace(/\/$/, '');
   const apiUrl = `${baseUrl}/wp-json/wp/v2`;
+  const postTypes = Array.isArray(options.postTypes) && options.postTypes.length
+    ? options.postTypes.map(type => String(type).replace(/^\/+|\/+$/g, ''))
+    : ['posts', 'pages'];
 
   // Create Base64 auth header
   const auth = Buffer.from(`${username}:${appPassword}`).toString('base64');
@@ -24,7 +27,8 @@ function create(siteUrl, username, appPassword) {
       'Authorization': `Basic ${auth}`,
       'Content-Type': 'application/json'
     },
-    timeout: 30000
+    timeout: 30000,
+    maxRedirects: 0
   });
 
   return {
@@ -51,25 +55,21 @@ function create(siteUrl, username, appPassword) {
       try {
         // Extract slug from URL
         const urlObj = new URL(pageUrl);
+        if (urlObj.origin !== new URL(baseUrl).origin) throw new Error('Page must belong to the registered site');
         const path = urlObj.pathname.replace(/\/$/, '');
         const slug = path.split('/').pop();
+        if (!slug) throw new Error('Use the Workspace Connector to resolve a WordPress homepage');
 
-        // Try posts first
-        let response = await client.get('/posts', {
-          params: { slug, per_page: 1 }
-        });
-
-        if (response.data.length > 0) {
-          return { type: 'post', data: response.data[0] };
-        }
-
-        // Try pages
-        response = await client.get('/pages', {
-          params: { slug, per_page: 1 }
-        });
-
-        if (response.data.length > 0) {
-          return { type: 'page', data: response.data[0] };
+        for (const endpoint of postTypes) {
+          try {
+            const response = await client.get(`/${endpoint}`, { params: { slug, per_page: 100, context: 'edit' } });
+            const exact = response.data.find(post => post.link && new URL(post.link).href.replace(/\/$/, '') === urlObj.href.replace(/\/$/, ''));
+            if (exact) {
+              return { type: endpoint.replace(/s$/, ''), endpoint, data: exact };
+            }
+          } catch (error) {
+            if (error.response?.status !== 404) throw error;
+          }
         }
 
         throw new Error('Post/page not found');
@@ -95,7 +95,7 @@ function create(siteUrl, username, appPassword) {
      */
     async updateMeta(id, type, metaKey, metaValue) {
       try {
-        const endpoint = type === 'page' ? 'pages' : 'posts';
+        const endpoint = type === 'page' ? 'pages' : (type === 'post' ? 'posts' : type);
         const response = await client.post(`/${endpoint}/${id}`, {
           meta: {
             [metaKey]: metaValue
@@ -108,96 +108,40 @@ function create(siteUrl, username, appPassword) {
     },
 
     /**
-     * Insert schema into WordPress
-     * Tries multiple methods: RankMath meta, Yoast meta, or post content
+     * Compatibility entry point. Writes now use the authenticated Workspace Connector.
+     */
+    async insertMappedSchema(pageUrl, schema, pageType, mapping = {}) {
+      return this.insertSchema(pageUrl, schema, pageType);
+    },
+
+    async getMappedSnapshot(pageUrl, mapping = {}) {
+      const result = await this.findByUrl(pageUrl);
+      const prefix = mapping.schemaMetaPrefix || 'rank_math_schema_';
+      const richSnippetKey = mapping.richSnippetKey || 'rank_math_rich_snippet';
+      const meta = result.data.meta || {};
+      const selectedMeta = {};
+      for (const [key, value] of Object.entries(meta)) {
+        if (key.startsWith(prefix) || key === richSnippetKey || Object.hasOwn(mapping.customFields || {}, key)) {
+          selectedMeta[key] = value;
+        }
+      }
+      return {
+        postId: result.data.id,
+        postType: result.type,
+        meta: selectedMeta,
+        contentHadWorkspaceSchema: String(result.data.content?.raw || '').includes('Schema Workspace JSON-LD')
+      };
+    },
+
+    /**
+     * Insert through the Workspace Connector with stored and public verification.
      */
     async insertSchema(pageUrl, schema, pageType) {
-      // Find the post/page
-      const result = await this.findByUrl(pageUrl);
-      const { type, data } = result;
-      const endpoint = type === 'page' ? 'pages' : 'posts';
-
-      // Create the JSON-LD script block
-      const jsonLdScript = `<!-- Schema Generator JSON-LD -->
-<script type="application/ld+json">
-${JSON.stringify(schema, null, 2)}
-</script>
-<!-- End Schema Generator -->`;
-
-      // Method 1: Try RankMath's rank_math_schema meta (may not work on all setups)
-      try {
-        // RankMath stores schemas with specific structure
-        const schemaTypes = schema['@graph'] ? schema['@graph'].map(s => s['@type']).join('_') : (schema['@type'] || 'Custom');
-        const metaKey = `rank_math_schema_${schemaTypes}`;
-
-        await client.post(`/${endpoint}/${data.id}`, {
-          meta: {
-            [metaKey]: JSON.stringify(schema),
-            // Also try the general RankMath schema key
-            'rank_math_rich_snippet': pageType === 'article' ? 'article' : 'service'
-          }
-        });
-      } catch (e) {
-        // RankMath meta not available, continue to fallback
-        console.log('RankMath meta not available:', e.message);
-      }
-
-      // Method 2: Try Yoast SEO schema meta (if Yoast is installed)
-      try {
-        await client.post(`/${endpoint}/${data.id}`, {
-          meta: {
-            '_yoast_wpseo_schema_page_type': pageType === 'article' ? 'WebPage' : 'ItemPage',
-            '_yoast_wpseo_schema_article_type': pageType === 'article' ? 'Article' : 'None'
-          }
-        });
-      } catch (e) {
-        // Yoast meta not available, continue
-      }
-
-      // Method 3: Insert JSON-LD into post content (most reliable fallback)
-      // Check if schema already exists in content
-      const currentContent = data.content?.rendered || data.content?.raw || '';
-
-      if (!currentContent.includes('Schema Generator JSON-LD')) {
-        // Append the JSON-LD to the post content
-        // We put it at the end so it doesn't affect the visible content
-        try {
-          // Get raw content
-          const rawContent = data.content?.raw || '';
-          const newContent = rawContent + '\n\n' + jsonLdScript;
-
-          await client.post(`/${endpoint}/${data.id}`, {
-            content: newContent
-          });
-
-          return {
-            success: true,
-            method: 'content',
-            postId: data.id,
-            postType: type,
-            message: 'Schema inserted into page content'
-          };
-        } catch (contentError) {
-          // Content update failed, may need different permissions
-          console.log('Content update failed:', contentError.message);
-        }
-      } else {
-        return {
-          success: true,
-          method: 'existing',
-          postId: data.id,
-          postType: type,
-          message: 'Schema already exists in page content'
-        };
-      }
-
-      return {
-        success: true,
-        method: 'meta',
-        postId: data.id,
-        postType: type,
-        message: 'Schema inserted via post meta (verify in RankMath)'
-      };
+      const connector = require('./wordpressConnector').create({
+        url: baseUrl, connection: { username, appPassword }
+      });
+      const previous = await connector.snapshot(pageUrl);
+      return connector.insert(pageUrl, schema, previous);
     },
 
     /**

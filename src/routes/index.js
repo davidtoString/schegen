@@ -2,7 +2,12 @@ const express = require('express');
 const router = express.Router();
 
 // Dashboard
-router.get('/', (req, res) => {
+for (const [url, section] of [['/', 'sites'], ['/generator', 'generate'], ['/results', 'results']]) {
+  router.get(url, (req, res) => res.render('workspace', { title: 'Schema Workspace', section }));
+}
+
+// Original advanced generator remains available for manual and database workflows.
+router.get('/legacy/generator', (req, res) => {
   res.render('index', {
     title: 'Schema Generator',
     defaultOrg: {
@@ -14,7 +19,7 @@ router.get('/', (req, res) => {
 });
 
 // Results page
-router.get('/results', (req, res) => {
+router.get('/legacy/results', (req, res) => {
   res.render('results', {
     title: 'Schema Results'
   });

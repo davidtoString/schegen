@@ -1,0 +1,23 @@
+services:
+  schema-workspace:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:8080"
+    environment:
+      PORT: 8080
+      NODE_ENV: production
+      DATA_DIR: /app/data
+      APP_SECRET: ${APP_SECRET:-local-development-secret-change-me}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MAX_CRAWL_PAGES: ${MAX_CRAWL_PAGES:-100}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    volumes:
+      - schema-workspace-data:/app/data
+      - schema-workspace-logs:/app/logs
+
+volumes:
+  schema-workspace-data:
+  schema-workspace-logs:

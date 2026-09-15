@@ -1,6 +1,47 @@
-# Schema Generator v2.8.1
+# Schema Workspace v3.0.0
 
-A Node.js application that generates comprehensive JSON-LD schemas for WordPress/RankMath websites. Optimized for HVAC and home services businesses. Supports AI verification, bulk processing, and multiple WordPress integration methods.
+**Current primary workflow: [Crawl → Create schema → Insert into WordPress](WORDPRESS-WORKFLOW.md).** Authenticate with an Application Password and choose direct REST metadata with a per-site field mapping, or the optional connector for storage and rendering. Database table prefixes need no configuration. See [tests and verification](TESTING.md). These guides supersede the archived HVAC/RankMath documentation below.
+
+A persistent multi-site application that crawls WordPress websites, generates JSON-LD, performs local checks, and publishes through configurable WordPress integrations. Sites & Crawl, Generate, and Results & Publish share one workspace and selected run. The original standalone generator remains available at `/legacy/generator`.
+
+## Docker quick start
+
+```bash
+cp .env.example .env
+# Set a long random APP_SECRET in .env before using real credentials.
+docker compose up --build
+```
+
+Open <http://localhost:3000>. Docker stores registered sites, encrypted credentials, crawl runs, generated schemas, and logs in named volumes. Back up both volumes and keep `APP_SECRET` stable; changing the secret makes existing stored credentials unreadable.
+
+For a local-only evaluation, Compose supplies a development secret. Do not use that default on a shared or internet-accessible deployment.
+
+The app requires login. Create your administrator with `docker compose exec schema-workspace node scripts/admin-user.js admin`, then choose a password in the terminal. There is no default password or public registration. Previous `DASHBOARD_PASSWORD` Basic auth is replaced by session login. See [cloud deployment and account setup](CLOUD-DEPLOYMENT.md) for HTTPS, backups and recovery.
+
+## Guided workflow
+
+1. Register the canonical WordPress URL and Application Password. For Rank Math / Pro sites install or update Workspace Connector **1.2.0** from the dashboard ZIP link. No database table mapping is needed.
+2. Save your key in **AI Settings**, then crawl. The app opens AI generation automatically; AI is mandatory, with no basic fallback.
+3. Generation opens **Review & Publish**. Choose replace, remove, or keep existing schema; preview each page, approve, and apply. **Undo last change** restores the prior app/Rank Math output state. Run records and snapshots are retained.
+
+Removal is reversible suppression of Rank Math output on selected pages, not deletion of Rank Math's settings. Other plugins' schema remains untouched. Rank Math Pro and your live AI model require staging checks; see the testing guide.
+
+Read [WORDPRESS-WORKFLOW.md](WORDPRESS-WORKFLOW.md) for field mappings, limitations and troubleshooting. Writing metadata alone does not render JSON-LD or guarantee rich results.
+
+## Archived advanced-generator documentation
+
+The following describes older functionality at `/legacy/generator`, not the current guided workspace. Do not use its legacy SQL or metadata-prefix setup for the main workflow.
+
+1. Register a site with either a WordPress Application Password or the included Schema Helper token.
+2. Test the connection and adjust post-type endpoints or metadata keys under **Advanced field mapping** when a site differs from RankMath defaults.
+3. Discover pages from an auto-detected or explicit sitemap.
+4. Select pages and generate JSON-LD with the deterministic engine or a per-run OpenAI/Gemini key.
+5. Review schema types and validation status in the saved run.
+6. Preview publication without changing WordPress, then explicitly confirm the real publish.
+
+Successful publish records include the previous mapped metadata/schema state returned by WordPress, so each run preserves an audit trail alongside the generated schema and publish result.
+
+The Application Password integration requires target metadata fields to be registered with `show_in_rest=true`. Content injection is disabled by default and can be enabled per site as an explicit fallback. The helper plugin remains the most reliable RankMath integration because it handles RankMath's serialized storage format inside WordPress.
 
 ## Table of Contents
 
@@ -22,6 +63,10 @@ A Node.js application that generates comprehensive JSON-LD schemas for WordPress
 ## Features
 
 - **Multi-Schema Generation**: Creates `@graph` structure with multiple schema types per page
+- **Persistent Multi-Site Workspace**: Encrypted site profiles and durable crawl/generation/publish history
+- **Flexible WordPress Mapping**: Configurable REST post types, schema meta prefix, rich-snippet key, and custom fields
+- **Safe Publishing**: Dry-run previews by default and explicit confirmation before writes
+- **Docker Ready**: Non-root runtime, health check, persistent data/log volumes
 - **HVAC/Home Services Optimized**: Pre-configured for HVAC, plumbing, electrical, roofing
 - **AI Verification**: OpenAI GPT or Google Gemini validates schemas for Google Rich Results compliance
 - **Three WordPress Integration Methods**:

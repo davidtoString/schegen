@@ -3,6 +3,7 @@ const cheerio = require('cheerio');
 const { XMLParser } = require('fast-xml-parser');
 
 const parser = new XMLParser({
+  processEntities: false,
   ignoreAttributes: false,
   attributeNamePrefix: '@_'
 });
@@ -63,8 +64,17 @@ function matchesPostTypeFilter(sitemapUrl, postTypeFilter) {
  * @param {string} sitemapUrl - URL to the sitemap
  * @param {string} postTypeFilter - 'all', 'pages', or 'posts'
  */
-async function parse(sitemapUrl, postTypeFilter = 'all') {
+async function parse(sitemapUrl, postTypeFilter = 'all', crawlContext = null) {
   const urls = [];
+  const context = crawlContext || { visited: new Set(), depth: 0, maxDepth: 6, maxUrls: 5000, origin: new URL(sitemapUrl).origin };
+  if (new URL(sitemapUrl).origin !== context.origin) throw new Error('Nested sitemap must stay on the same site.');
+  if (context.visited.size >= 100) throw new Error('Sitemap file limit reached. Supply a smaller sitemap.');
+
+  if (context.depth > context.maxDepth) {
+    throw new Error(`Sitemap nesting exceeds the maximum depth of ${context.maxDepth}`);
+  }
+  if (context.visited.has(sitemapUrl)) return urls;
+  context.visited.add(sitemapUrl);
 
   try {
     let response;
@@ -72,7 +82,8 @@ async function parse(sitemapUrl, postTypeFilter = 'all') {
       try {
         response = await axios.get(sitemapUrl, {
           timeout: 45000,
-          maxRedirects: 5,
+          maxRedirects: 0,
+          maxContentLength: 10 * 1024 * 1024,
           headers: getSitemapHeaders(sitemapUrl),
           decompress: true
         });
@@ -106,8 +117,9 @@ async function parse(sitemapUrl, postTypeFilter = 'all') {
       for (const sitemap of sitemaps) {
         const nestedUrl = sitemap.loc;
         if (nestedUrl && matchesPostTypeFilter(nestedUrl, postTypeFilter)) {
-          const nestedUrls = await parse(nestedUrl, postTypeFilter);
+          const nestedUrls = await parse(nestedUrl, postTypeFilter, { ...context, depth: context.depth + 1 });
           urls.push(...nestedUrls);
+          if (urls.length >= context.maxUrls) return urls.slice(0, context.maxUrls);
         }
       }
     }
@@ -120,6 +132,7 @@ async function parse(sitemapUrl, postTypeFilter = 'all') {
       for (const entry of urlEntries) {
         if (entry.loc) {
           urls.push(entry.loc);
+          if (urls.length >= context.maxUrls) break;
         }
       }
     }

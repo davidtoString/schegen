@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Schema Workspace</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="login-shell">
+    <section class="login-card">
+      <h1>Schema Workspace</h1>
+      <p>Sign in to manage your WordPress sites and schema.</p>
+      <% if (error) { %><p role="alert" class="login-error"><%= error %></p><% } %>
+      <% if (configured) { %>
+      <form method="post" action="/login">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" maxlength="80" required autofocus>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required>
+        <button type="submit" class="btn btn-primary">Sign in</button>
+      </form>
+      <p class="help-text">Private workspace · Sessions expire after 8 hours.</p>
+      <% } else { %>
+      <h2>Set up your administrator</h2>
+      <p>This workspace is locked until the server owner creates an account. There is no public registration.</p>
+      <pre>docker compose exec schema-workspace node scripts/admin-user.js admin</pre>
+      <p>Run this in your server terminal, choose a password, then refresh this page.</p>
+      <% } %>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,23 @@
+// Isolated browser QA: real fixture WordPress, deterministic AI stub, no production data/keys.
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-ui-qa-'));
+process.env.APP_SECRET = 'ui-fixture-only';
+process.env.OPENAI_API_KEY = 'ui-fixture-only';
+const compose = path.join(__dirname, 'compose.yaml');
+const args = ['compose', '-f', compose, 'exec', '-T', '--user', 'www-data', 'wp-a', 'php', '/fixture/initialize.php'];
+const setup = JSON.parse(execFileSync('docker', args, { encoding: 'utf8' }));
+execFileSync('docker', [...args, 'rankmath']);
+const schemas = require('../../src/services/pageSchema');
+schemas.generateAI = async page => schemas.generate(page);
+require('../../src/services/workspaceStore').createSite({ name: 'Rank Math test site', url: setup.url, connection: { username: setup.username, appPassword: setup.appPassword }, mapping: { integration: 'connector' } });
+const express = require('express');
+const app = express();
+app.use(express.json());
+app.set('view engine', 'ejs'); app.set('views', path.join(__dirname, '../../src/views'));
+app.use(express.static(path.join(__dirname, '../../public')));
+app.use('/api/workspaces', require('../../src/routes/workspaces'));
+app.use(require('../../src/routes/index'));
+app.listen(8130, '127.0.0.1', () => console.log('Isolated UI fixture ready at http://127.0.0.1:8130 (AI stub; WordPress fixtures only).'));

@@ -75,6 +75,7 @@ async function fetchWithRetry(url, maxRetries = 3) {
       const response = await axios.get(url, {
         timeout: 45000,
         maxRedirects: 5,
+        maxContentLength: 5 * 1024 * 1024,
         validateStatus: (status) => status < 400,
         headers: getBrowserHeaders(url),
         withCredentials: false,
@@ -159,6 +160,8 @@ async function scrape(url, options = {}) {
 
     const pageData = {
       url,
+      language: $('html').attr('lang') || '',
+      robots: $('meta[name="robots"]').attr('content') || '',
       title: extractTitle($),
       description: extractDescription($),
       content,
@@ -225,11 +228,14 @@ function extractContent($) {
     'article .content',
     '.page-content',
     'main article',
-    'article'
+    'article',
+    'main'
   ];
 
   for (const selector of contentSelectors) {
-    const content = $(selector).text().trim();
+    const container = $(selector).clone();
+    container.find('script, style, noscript, nav').remove();
+    const content = container.text().replace(/\s+/g, ' ').trim();
     if (content) {
       return content.substring(0, 5000); // Limit content length
     }

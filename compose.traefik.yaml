@@ -1,0 +1,49 @@
+# Standalone compose file for deploying behind an existing Traefik v1 reverse
+# proxy on a shared host (e.g. the dm-containers server: external `web`
+# network, no Caddy, no published host ports — Traefik owns 80/443).
+#
+# This intentionally does NOT chain with compose.yaml/compose.cloud.yaml:
+# Compose merges list fields like `ports` by concatenation, so an override
+# can't strip the base file's 127.0.0.1:3000:8080 publish. Run standalone:
+#
+#   docker compose -f compose.traefik.yaml up -d --build
+#   docker compose -f compose.traefik.yaml exec schema-workspace node scripts/admin-user.js admin
+#
+# Requires in .env: APP_DOMAIN (e.g. schema.datadeposit.xyz) and a strong
+# permanent APP_SECRET. See CLOUD-DEPLOYMENT.md for the full walkthrough.
+
+networks:
+  web:
+    external: true
+
+services:
+  schema-workspace:
+    container_name: schema-generator
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 8080
+      NODE_ENV: production
+      DATA_DIR: /app/data
+      APP_SECRET: ${APP_SECRET:?Set a strong permanent APP_SECRET}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MAX_CRAWL_PAGES: ${MAX_CRAWL_PAGES:-100}
+      PUBLIC_URL: https://${APP_DOMAIN:?Set APP_DOMAIN to your public hostname, e.g. schema.datadeposit.xyz}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    expose:
+      - "8080"
+    networks:
+      - web
+    labels:
+      traefik.enable: 'true'
+      traefik.frontend.rule: "Host:${APP_DOMAIN}"
+      traefik.port: '8080'
+    volumes:
+      - schema-workspace-data:/app/data
+      - schema-workspace-logs:/app/logs
+
+volumes:
+  schema-workspace-data:
+  schema-workspace-logs:

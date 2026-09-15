@@ -1,0 +1,168 @@
+<%- include('partials/header') %>
+
+<div class="workspace-toolbar">
+  <h2 id="workflow-location" aria-live="polite">Sites</h2>
+  <div class="summary-actions"><button id="open-ai-settings" class="btn btn-secondary">AI Settings</button><button class="btn btn-primary" id="add-site">Add site</button></div>
+</div>
+<div id="workspace-alert" class="workspace-alert" role="status" hidden></div>
+<p id="workflow-guide" class="workspace-guide" role="status">Add your site and configure AI Settings to begin.</p>
+
+<section class="workspace-grid">
+  <aside class="site-rail card">
+    <div class="section-heading"><h3>Sites</h3><span id="site-count" class="count-pill">0</span></div>
+    <div id="site-list" class="site-list"><p class="muted">Loading sites…</p></div>
+  </aside>
+
+  <div class="workspace-main">
+    <section id="empty-state" class="card empty-state">
+      <h3>Add your first site</h3>
+      <p>Connect WordPress to start working with its pages.</p>
+      <button class="btn btn-primary" data-action="new-site">Connect WordPress</button>
+    </section>
+
+    <section id="site-panel" hidden>
+      <div class="card site-summary">
+        <div><h2 id="active-site-name"></h2><a id="active-site-url" target="_blank" rel="noopener"></a></div>
+        <div class="summary-actions">
+          <span id="connection-badge" class="status-badge">Untested</span>
+          <button class="btn btn-secondary" id="test-site">Test connection</button>
+          <button class="btn btn-secondary" id="edit-site">Site settings</button>
+        </div>
+      </div>
+
+      <div class="step-grid workspace-step-grid">
+        <section class="card step-card" data-workspace-panel="sites">
+          <h3>Find pages</h3>
+          <p>Fetch published content from the selected site.</p>
+          <label for="page-filter">Content to include</label>
+          <select id="page-filter"><option value="all">All published content</option><option value="pages">Pages only</option><option value="posts">Posts only</option></select>
+          <details class="workspace-options"><summary>Choose a sitemap or specific URLs</summary>
+          <label for="sitemap-url">Sitemap URL <small>(optional)</small></label>
+          <input id="sitemap-url" type="url" placeholder="https://example.com/sitemap_index.xml">
+          <label for="manual-urls">Specific page URLs <small>(optional, one per line)</small></label>
+          <textarea id="manual-urls" rows="3" placeholder="https://example.com/about/"></textarea>
+          </details>
+          <button class="btn btn-primary" id="start-crawl">Crawl site</button>
+        </section>
+
+        <section class="card step-card" data-workspace-panel="generate">
+          <h3>Generate schema</h3>
+          <p>Select pages below, then create schema from their content.</p>
+          <p class="muted">AI is always used. There is no basic-generation fallback.</p>
+          <div id="ai-fields">
+            <label for="ai-provider">Provider</label><select id="ai-provider"><option value="openai">OpenAI</option><option value="gemini">Gemini</option></select>
+            <p id="ai-configuration-status" class="muted"></p>
+            <label for="ai-model-choice">Model</label><select id="ai-model-choice"><option value="">Loading model settings…</option></select>
+            <label id="ai-model-custom" hidden>Custom model ID<input id="ai-model" placeholder="Exact model ID for this provider"></label>
+            <details class="workspace-options"><summary>Use a different API key for this run</summary><label for="ai-key">API key <small>(not saved)</small></label><input id="ai-key" type="password" autocomplete="off" placeholder="Use saved key from AI Settings"></details>
+          </div>
+          <button class="btn btn-primary" id="generate-run" disabled>Generate AI schema → Review</button>
+        </section>
+
+        <section class="card step-card" data-workspace-panel="results">
+          <h3>Publish schema</h3>
+          <p>Review selected pages before publishing. Page content stays unchanged.</p>
+          <label for="schema-policy">Existing schema</label>
+          <select id="schema-policy"><option value="replace-existing">Replace existing Rank Math schema with reviewed AI schema</option><option value="remove-existing">Remove schema from this page (reversible)</option><option value="keep">Keep existing — skip pages that already have schema</option><option value="replace-managed">Replace only the app's previous schema</option><option value="review">Advanced: keep Rank Math output and add app schema</option></select>
+          <p class="muted">Replace/remove requires Connector 1.2+. It suppresses Rank Math output on selected pages, preserving its underlying settings for Undo. Other plugins' schema is not removed.</p>
+          <label class="toggle-row"><input id="acknowledge-conflicts" type="checkbox">I reviewed the before/after and approve the selected replace, remove, or keep action.</label>
+          <div class="summary-actions">
+          <button class="btn btn-secondary" id="preview-publish" disabled>1. Preview changes</button>
+          <button class="btn btn-primary" id="publish-run" disabled>2. Apply reviewed changes</button>
+          <button class="btn btn-secondary" id="verify-run" disabled>Verify live pages</button>
+          <button class="btn btn-secondary" id="rollback-run" disabled>Undo last change</button>
+          </div>
+        </section>
+      </div>
+
+      <section class="card run-card">
+        <div class="section-heading"><h3 id="run-title">No crawl yet</h3><div id="run-status" class="status-badge">Ready</div></div>
+        <div id="run-summary" class="metric-row"></div>
+        <p id="run-message" role="status"></p>
+        <div id="pages-table" class="pages-table"><p class="muted">Discover pages to begin.</p></div>
+      </section>
+
+      <div class="summary-actions" style="margin:1rem 0"><button id="workflow-back" class="btn btn-secondary">Back</button><button id="workflow-next" class="btn btn-primary">Continue</button></div>
+
+      <section class="card history-card" data-workspace-panel="results">
+        <div class="section-heading"><h3>Run history</h3></div>
+        <div id="run-history"><p class="muted">No recorded runs.</p></div>
+      </section>
+    </section>
+  </div>
+</section>
+
+<dialog id="site-dialog" class="site-dialog">
+  <form id="site-form" method="dialog">
+    <div class="dialog-heading"><div><span class="eyebrow">SITE REGISTRATION</span><h2 id="site-dialog-title">Register a site</h2></div><button type="button" class="icon-button" id="close-dialog">×</button></div>
+    <input type="hidden" id="site-id">
+    <div class="form-grid">
+      <label>Site name<input id="site-name" required placeholder="Acme Heating"></label>
+      <label>WordPress URL<input id="site-url" type="url" required placeholder="https://example.com"></label>
+    </div>
+    <p>Create an Application Password under WordPress → Users → Profile. Each site has its own credentials and field mapping. No database access or table prefix is needed.</p>
+    <label>Connection method<select id="connection-type"><option value="application-password">WordPress Application Password</option><option value="helper">Legacy helper (advanced generator only)</option></select></label>
+    <div id="app-password-fields" class="form-grid">
+      <label>WordPress username<input id="wp-username" autocomplete="username"></label>
+      <label>Application password<input id="wp-password" type="password" autocomplete="new-password" placeholder="Leave blank to keep existing"></label>
+    </div>
+    <div id="helper-fields" hidden><label>Helper secret token<input id="helper-token" type="password" autocomplete="off" placeholder="Leave blank to keep existing"></label></div>
+    <label>Schema integration<select id="integration"><option value="connector">Rank Math integration — Workspace Connector</option><option value="rest-meta">Advanced: direct REST metadata (no Rank Math replacement/removal)</option></select></label>
+    <div id="rest-mapping-fields">
+      <p class="muted">The field must be registered with show_in_rest and rendered as JSON-LD by your theme/plugin. Saving metadata alone does not output schema. Preview checks the selected target without writing.</p>
+      <div class="form-grid"><label>Exact metadata key<input id="rest-meta-key" placeholder="site_schema_jsonld"></label><label>Stored format<select id="rest-encoding"><option value="json-string">JSON string (REST type: string)</option><option value="object">JSON object (REST type: object)</option></select></label></div>
+      <details><summary>Different fields for different post types</summary><label>Overrides as JSON (WordPress type names, not collection names)<textarea id="rest-overrides" rows="4" placeholder='{"product":{"key":"product_jsonld","encoding":"object"}}'></textarea></label></details>
+    </div>
+    <p id="connector-help" hidden><a href="/api/workspaces/connector" download>Download Connector 1.2 ZIP</a>. Upload or update under Plugins → Add New → Upload Plugin and activate. Required for reversible Rank Math replacement/removal. No table-prefix configuration.</p>
+    <details>
+      <summary>Legacy field mapping (advanced generator only)</summary>
+      <p class="muted">Use the REST collection names and metadata keys registered by this WordPress site.</p>
+      <label>Post type endpoints<input id="post-types" value="pages, posts" placeholder="pages, posts, products"></label>
+      <div class="form-grid"><label>Schema meta prefix<input id="schema-prefix" value="rank_math_schema_"></label><label>Rich snippet key<input id="rich-key" value="rank_math_rich_snippet"></label></div>
+      <label class="toggle-row"><input type="checkbox" id="content-fallback"><span>Allow fallback injection into post content</span></label>
+    </details>
+    <div class="dialog-actions"><button type="button" class="btn btn-danger dialog-delete" id="delete-site" hidden>Delete site</button><button type="button" class="btn btn-secondary" id="cancel-dialog">Cancel</button><button type="submit" class="btn btn-primary">Save site</button></div>
+  </form>
+</dialog>
+
+<dialog id="schema-dialog" class="site-dialog">
+  <div style="padding:1.5rem">
+    <button id="close-schema" class="btn btn-secondary">Close</button>
+    <h2>Schema and crawl review</h2>
+    <p id="schema-review-url"></p>
+    <pre id="schema-review-messages" style="white-space:pre-wrap"></pre>
+    <h3>Generated JSON-LD</h3><pre id="schema-review-json" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+      <h3>Existing JSON-LD</h3><pre id="schema-review-existing" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+      <h3>Publish preview</h3><pre id="schema-review-decision" style="white-space:pre-wrap"></pre>
+      <div class="schema-comparison"><section><h3>Stored value before</h3><pre id="schema-review-before"></pre></section><section><h3>Proposed app schema</h3><pre id="schema-review-after"></pre></section></div>
+      <details><summary>Insertion and rollback records</summary><pre id="schema-review-records" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
+    <h3>Crawled content</h3><pre id="schema-review-content" style="white-space:pre-wrap"></pre>
+  </div>
+</dialog>
+
+<dialog id="ai-settings-dialog" class="site-dialog">
+  <form id="ai-settings-form">
+    <h2>AI Settings</h2>
+    <p>Shared across your workspace sites. Keys are encrypted on the server, never returned to the browser, and take effect without a restart. Anyone with dashboard access can use these keys for generation.</p>
+    <p id="ai-settings-message" role="status"></p>
+    <label>Default provider<select id="settings-provider"><option value="openai">OpenAI</option><option value="gemini">Gemini</option></select></label>
+    <% for (const provider of ['openai', 'gemini']) { %>
+      <fieldset><legend><%= provider === 'openai' ? 'OpenAI' : 'Google Gemini' %></legend>
+        <p id="settings-<%= provider %>-status"></p>
+        <label>New API key<input id="settings-<%= provider %>-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved key"></label>
+        <label>Default model<select id="settings-<%= provider %>-model-choice"><option value="">Loading…</option></select></label>
+        <label id="settings-<%= provider %>-model-custom" hidden>Custom model ID<input id="settings-<%= provider %>-model" placeholder="Exact model ID for this provider"></label>
+        <label class="toggle-row"><input id="settings-<%= provider %>-remove" type="checkbox">Remove saved key (environment key, if set, remains available)</label>
+      </fieldset>
+    <% } %>
+    <div class="dialog-actions"><button id="close-ai-settings" type="button" class="btn btn-secondary">Cancel</button><button id="save-ai-settings" type="submit" class="btn btn-primary">Save settings</button></div>
+  </form>
+</dialog>
+
+<script src="/js/modelPicker.js"></script>
+<script src="/js/workspace.js"></script>
+    </div>
+  </main>
+  <footer class="footer"><div class="container"><p>Schema Workspace · One site, one run, from crawl to publication</p><details><summary>Legacy tools and browser-local records</summary><p>These older tools are separate from saved workspace runs. Existing records have not been deleted or migrated.</p><a href="/legacy/generator">Legacy generator</a> · <a href="/legacy/results">Legacy browser results</a></details></div></footer>
+</body>
+</html>

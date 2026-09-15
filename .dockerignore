@@ -1,8 +1,10 @@
 node_modules/
+data/
 .env
 logs/
 tests/
-scripts/
+scripts/*
+!scripts/admin-user.js
 .git/
 *.md
 .dockerignore
