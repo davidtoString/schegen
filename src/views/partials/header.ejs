@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><%= title %> - WordPress Schema Generator</title>
   <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
   <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
   <script src="/js/auth.js"></script>
 </head>
 <body>
   <header class="header">
     <div class="container">
-      <h1 class="logo">Schema Generator</h1>
+      <h1 class="logo"><img src="/img/favicon.svg" class="logo-mark" alt="">Schema Generator</h1>
       <nav class="nav">
         <% if (typeof currentUser !== 'undefined' && currentUser) { %>
         <form method="post" action="/logout" class="logout-form">

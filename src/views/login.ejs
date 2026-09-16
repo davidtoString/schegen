@@ -4,11 +4,12 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sign in · Schema Workspace</title>
   <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
 </head>
 <body>
   <main class="login-shell">
     <section class="login-card">
-      <h1>Schema Workspace</h1>
+      <h1><img src="/img/favicon.svg" class="logo-mark" alt="">Schema Workspace</h1>
       <p>Sign in to manage your WordPress sites and schema.</p>
       <% if (error) { %><p role="alert" class="login-error"><%= error %></p><% } %>
       <% if (configured) { %>

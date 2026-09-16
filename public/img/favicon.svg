@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Schema Workspace">
+  <rect width="32" height="32" rx="7" fill="#10a37f"/>
+  <line x1="16" y1="9" x2="10" y2="21" stroke="#ffffff" stroke-width="2.25" stroke-linecap="round"/>
+  <line x1="16" y1="9" x2="22" y2="21" stroke="#ffffff" stroke-width="2.25" stroke-linecap="round"/>
+  <circle cx="16" cy="9" r="3.25" fill="#ffffff"/>
+  <circle cx="10" cy="21" r="3.25" fill="#ffffff"/>
+  <circle cx="22" cy="21" r="3.25" fill="#ffffff"/>
+</svg>
