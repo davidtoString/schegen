@@ -1,8 +1,8 @@
 # Schema Workspace v3.0.0
 
-**Current primary workflow: [Crawl → Create schema → Insert into WordPress](WORDPRESS-WORKFLOW.md).** Authenticate with an Application Password and choose direct REST metadata with a per-site field mapping, or the optional connector for storage and rendering. Database table prefixes need no configuration. See [tests and verification](TESTING.md). These guides supersede the archived HVAC/RankMath documentation below.
+**Current primary workflow: [Crawl → Create schema → Insert into WordPress](WORDPRESS-WORKFLOW.md).** Authenticate with an Application Password and choose direct REST metadata with a per-site field mapping, or the optional connector for storage and rendering. Database table prefixes need no configuration. See [tests and verification](TESTING.md).
 
-A persistent multi-site application that crawls WordPress websites, generates JSON-LD, performs local checks, and publishes through configurable WordPress integrations. Sites & Crawl, Generate, and Results & Publish share one workspace and selected run. The original standalone generator remains available at `/legacy/generator`.
+A persistent multi-site application that crawls WordPress websites, generates JSON-LD, performs local checks, and publishes through configurable WordPress integrations. A single guided wizard — Pages → Action → Review → Apply — shares one workspace and selected run per site.
 
 ## Docker quick start
 
@@ -16,32 +16,22 @@ Open <http://localhost:3000>. Docker stores registered sites, encrypted credenti
 
 For a local-only evaluation, Compose supplies a development secret. Do not use that default on a shared or internet-accessible deployment.
 
-The app requires login. Create your administrator with `docker compose exec schema-workspace node scripts/admin-user.js admin`, then choose a password in the terminal. There is no default password or public registration. Previous `DASHBOARD_PASSWORD` Basic auth is replaced by session login. See [cloud deployment and account setup](CLOUD-DEPLOYMENT.md) for HTTPS, backups and recovery.
+The app requires login. Create your administrator with `docker compose exec schema-workspace node scripts/admin-user.js admin`, then choose a password in the terminal — or set `DASHBOARD_USER`/`DASHBOARD_PASSWORD` in `.env` before first start to bootstrap the account automatically. There is no default password or public registration. See [cloud deployment and account setup](CLOUD-DEPLOYMENT.md) for HTTPS, backups and recovery.
 
 ## Guided workflow
 
-1. Register the canonical WordPress URL and Application Password. For Rank Math / Pro sites install or update Workspace Connector **1.2.0** from the dashboard ZIP link. No database table mapping is needed.
-2. Save your key in **AI Settings**, then crawl. The app opens AI generation automatically; AI is mandatory, with no basic fallback.
-3. Generation opens **Review & Publish**. Choose replace, remove, or keep existing schema; preview each page, approve, and apply. **Undo last change** restores the prior app/Rank Math output state. Run records and snapshots are retained.
+Register the canonical WordPress URL and Application Password. For Rank Math / Pro sites install or update Workspace Connector **1.2.0** (download it from the toolbar, or the site dialog). No database table mapping is needed. Then step through the wizard for that site:
+
+1. **Pages** — crawl the site, then check which pages to work with.
+2. **Action** — explicitly choose **Create new schema** or **Delete existing schema** for the selected pages.
+3. **Review** — for Create, save your key in **AI Settings** and generate (AI is mandatory, with no basic fallback); for Delete, just confirm the pages. Either way, preview before/after per page.
+4. **Apply** — approve and write to WordPress. **Undo last change** restores the prior app/Rank Math output state afterward. Run records and snapshots are retained.
+
+The page list stays visible below every step, so which pages you're affecting is never ambiguous, and the step indicator lets you jump back to any step you've already completed.
 
 Removal is reversible suppression of Rank Math output on selected pages, not deletion of Rank Math's settings. Other plugins' schema remains untouched. Rank Math Pro and your live AI model require staging checks; see the testing guide.
 
 Read [WORDPRESS-WORKFLOW.md](WORDPRESS-WORKFLOW.md) for field mappings, limitations and troubleshooting. Writing metadata alone does not render JSON-LD or guarantee rich results.
-
-## Archived advanced-generator documentation
-
-The following describes older functionality at `/legacy/generator`, not the current guided workspace. Do not use its legacy SQL or metadata-prefix setup for the main workflow.
-
-1. Register a site with either a WordPress Application Password or the included Schema Helper token.
-2. Test the connection and adjust post-type endpoints or metadata keys under **Advanced field mapping** when a site differs from RankMath defaults.
-3. Discover pages from an auto-detected or explicit sitemap.
-4. Select pages and generate JSON-LD with the deterministic engine or a per-run OpenAI/Gemini key.
-5. Review schema types and validation status in the saved run.
-6. Preview publication without changing WordPress, then explicitly confirm the real publish.
-
-Successful publish records include the previous mapped metadata/schema state returned by WordPress, so each run preserves an audit trail alongside the generated schema and publish result.
-
-The Application Password integration requires target metadata fields to be registered with `show_in_rest=true`. Content injection is disabled by default and can be enabled per site as an explicit fallback. The helper plugin remains the most reliable RankMath integration because it handles RankMath's serialized storage format inside WordPress.
 
 ## Table of Contents
 
@@ -49,35 +39,25 @@ The Application Password integration requires target metadata fields to be regis
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [WordPress Integration Methods](#wordpress-integration-methods)
-- [WordPress Helper Plugin](#wordpress-helper-plugin)
+- [Workspace Connector Plugin](#workspace-connector-plugin)
 - [Usage](#usage)
 - [API Reference](#api-reference)
-- [Schema Types Generated](#schema-types-generated)
 - [Anti-Firewall Measures](#anti-firewall-measures)
 - [Troubleshooting](#troubleshooting)
-- [Recent Changes v2.8.1](#recent-changes-v281)
 - [For Future Claude Sessions](#for-future-claude-sessions)
 
 ---
 
 ## Features
 
-- **Multi-Schema Generation**: Creates `@graph` structure with multiple schema types per page
+- **AI-Generated JSON-LD**: OpenAI GPT or Google Gemini analyzes each crawled page and generates the appropriate schema graph
 - **Persistent Multi-Site Workspace**: Encrypted site profiles and durable crawl/generation/publish history
-- **Flexible WordPress Mapping**: Configurable REST post types, schema meta prefix, rich-snippet key, and custom fields
-- **Safe Publishing**: Dry-run previews by default and explicit confirmation before writes
+- **Flexible WordPress Mapping**: Rank Math Workspace Connector, or direct REST metadata with per-post-type overrides
+- **Safe Publishing**: Dry-run previews by default, explicit confirmation before writes, and one-click Undo
+- **Bulk Schema Removal**: Remove app-published schema from every page of a site in one reviewed action
 - **Docker Ready**: Non-root runtime, health check, persistent data/log volumes
-- **HVAC/Home Services Optimized**: Pre-configured for HVAC, plumbing, electrical, roofing
-- **AI Verification**: OpenAI GPT or Google Gemini validates schemas for Google Rich Results compliance
-- **Three WordPress Integration Methods**:
-  - REST API with Application Passwords
-  - Direct MySQL database connection
-  - Helper Plugin for secure RankMath injection
-- **Bulk Processing**: Process entire sitemaps with progress tracking
-- **Auto-Detection**: Extracts organization info, FAQs, phone, service areas from pages
-- **Dark Mode**: Dracula theme with localStorage persistence
-- **Download All**: Export schemas as JSON or ZIP file
-- **Back-to-Top Button**: Easy navigation on long pages
+- **Single Administrator Login**: Session-based auth, no public signup, CSRF-protected mutations
+- **Dark Mode**: Theme toggle with localStorage persistence
 
 ---
 
@@ -107,8 +87,7 @@ npm test
 
 **Requirements:**
 - Node.js >= 18.0.0
-- MySQL database (for direct DB method)
-- WordPress with RankMath SEO plugin
+- WordPress with an Application Password (Rank Math recommended for the connector integration)
 
 ---
 
@@ -119,331 +98,115 @@ npm test
 ```bash
 # Server
 PORT=3000
+DATA_DIR=./data
+MAX_CRAWL_PAGES=100
 
-# WordPress REST API (optional - can set via UI)
-WP_SITE_URL=https://yoursite.com
-WP_USERNAME=admin
-WP_APP_PASSWORD=xxxx xxxx xxxx xxxx xxxx xxxx
+# Required: encrypts stored credentials. Generate with:
+# node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+APP_SECRET=
 
-# Organization defaults (auto-detected if not set)
-DEFAULT_ORG_NAME=Your Company Name
-DEFAULT_ORG_URL=https://yoursite.com
-DEFAULT_ORG_LOGO=https://yoursite.com/logo.png
-DEFAULT_BUSINESS_TYPE=HVACBusiness
-DEFAULT_AREA_SERVED=Hamilton, Burlington, Oakville
-DEFAULT_PHONE=(905) 555-1234
+# Exact browser origin; HTTPS required for cloud domains.
+PUBLIC_URL=http://localhost:3000
+# For compose.cloud.yaml/compose.traefik.yaml, set your real DNS hostname (no scheme/path).
+APP_DOMAIN=
 
-# AI API Keys (for verification features)
-OPENAI_API_KEY=sk-...
-GEMINI_API_KEY=AIza...
+# Optional one-time administrator bootstrap (see Docker quick start above).
+DASHBOARD_USER=
+DASHBOARD_PASSWORD=
 
-# Direct Database Connection (alternative to REST API)
-DB_HOST=localhost
-DB_USER=wordpress_user
-DB_PASSWORD=your_password
-DB_NAME=wordpress_db
-DB_PORT=3306
-DB_TABLE_PREFIX=wp_
+# AI API Keys (schema generation is mandatory; can also be set per-provider in AI Settings)
+OPENAI_API_KEY=
+GEMINI_API_KEY=
 ```
+
+See [.env.example](.env.example) for the full annotated list, including `TRUST_PROXY`.
 
 ---
 
 ## WordPress Integration Methods
 
-The app supports three methods to insert schemas into WordPress/RankMath:
+Each site is registered with a WordPress Application Password, then one of two integrations:
 
-### Method 1: RankMath Helper Plugin (Recommended)
+### Method 1: Workspace Connector (recommended for Rank Math)
 
-**Best for**: Most users - secure, easy setup, works with any hosting
+Install the small plugin below on the target WordPress site. It exposes dedicated REST endpoints for reading/writing schema and suppressing/restoring Rank Math's own output, so replace/remove actions are fully reversible.
 
-Uses a lightweight PHP snippet installed on WordPress that creates REST API endpoints.
+### Method 2: Direct REST metadata
 
-**Setup**:
-1. Install the helper plugin snippet (see below)
-2. In Schema Generator UI, select "RankMath Helper" connection type
-3. Enter your site URL and secret token
-4. Click "Test Connection" to verify
-
-### Method 2: Direct Database Connection
-
-**Best for**: Full control, bypasses WordPress security, faster bulk operations
-
-Connects directly to MySQL and writes to `wp_postmeta` table using PHP serialization format.
-
-**Setup**:
-1. Configure DB credentials in `.env` or enter in UI
-2. Requires MySQL access (localhost or remote with proper permissions)
-3. Table prefix must match your WordPress installation (default: `wp_`)
-
-### Method 3: WordPress REST API
-
-**Best for**: Standard WordPress API integration without custom plugins
-
-Uses WordPress Application Passwords for authentication.
-
-**Setup**:
-1. In WordPress: Users → Your Profile → Application Passwords
-2. Create new password, copy it (with spaces)
-3. Enter WP URL, username, and app password in Schema Generator
+No plugin required. Point the app at any REST-exposed post-meta field (`show_in_rest: true`) and it reads/writes JSON-LD there directly, with optional per-post-type key/encoding overrides. Your theme or another plugin is responsible for rendering that field as JSON-LD.
 
 ---
 
-## WordPress Helper Plugin
+## Workspace Connector Plugin
 
-To insert schemas into WordPress/RankMath via the recommended method, install this PHP snippet.
+To use Method 1, install the Workspace Connector on the target WordPress site.
 
-### Installation Steps
+1. Download it from the workspace toolbar ("Download plugin") or `GET /api/workspaces/connector`.
+2. In WordPress: **Plugins → Add New → Upload Plugin**, upload the ZIP, and activate.
+3. Register the site in the workspace with its URL and an Application Password (**Users → Profile → Application Passwords**).
+4. Choose **Rank Math integration — Workspace Connector** as the schema integration and test the connection.
 
-1. Install **"Code Snippets"** plugin on WordPress (or use functions.php)
-2. Create a new PHP snippet
-3. Copy the code from `wordpress-helper-plugin.php` in this project
-4. **IMPORTANT**: Change `YOUR_SECRET_TOKEN_HERE` to a secure random string
-5. Save and activate the snippet
-
-### What the Plugin Does
-
-Creates these REST API endpoints on your WordPress site:
-- `POST /wp-json/schema-generator/v1/find` - Find post by URL/slug
-- `GET /wp-json/schema-generator/v1/get/{id}` - Get existing schemas
-- `POST /wp-json/schema-generator/v1/insert` - Insert single schema
-- `POST /wp-json/schema-generator/v1/insert-multiple` - Insert multiple schemas
-- `POST /wp-json/schema-generator/v1/delete` - Delete schemas
-
-All endpoints require the `X-Schema-Token` header with your secret token.
-
-### Verifying Installation
-
-1. Activate the snippet in WordPress
-2. In Schema Generator, use "RankMath Helper" connection
-3. Enter site URL and secret token
-4. Click "Test Connection" - should show "Connected to Schema Generator Helper"
+The connector is what makes replace/remove of existing Rank Math output reversible — it stores the prior state so **Undo last change** can restore it exactly.
 
 ---
 
 ## Usage
 
-### Web Interface
-
-1. Start the server: `npm run dev`
-2. Open http://localhost:3000
-3. Enter your website URL
-4. Click "Auto-Detect from Site" to populate organization info
-5. Use one of the tabs:
-   - **Single URL**: Process one page at a time
-   - **Paste URLs**: Paste a list of URLs to process
-   - **Sitemap Mode**: Fetch and process entire sitemap
-6. Click "Generate Schemas" to create schemas
-7. Review generated schemas (AI verification runs automatically if API key set)
-8. Click "Publish to WordPress" to insert into RankMath
+1. Start the server (`npm run dev` or `docker compose up`) and open the app. Sign in with your administrator account.
+2. Add a site, then step through the wizard: **Pages** (crawl it — sitemap, WordPress discovery, or a pasted URL list — and check which ones to work with), **Action** (Create new schema or Delete existing schema), **Review** (generate with your configured OpenAI/Gemini key, or confirm pages for deletion; preview the diff per page), **Apply** (acknowledge and apply; verify live pages or undo afterward).
 
 ### Dark Mode
 
-- Click the moon/sun icon in the header to toggle
-- Uses Dracula color theme
-- Preference saved to localStorage
-
-### Download All Schemas
-
-- After generating schemas, click "Download All"
-- Choose format:
-  - **JSON**: Single file with all schemas
-  - **ZIP**: Separate JSON file per page
+Click the moon/sun icon in the header to toggle. Preference is saved to `localStorage`.
 
 ---
 
 ## API Reference
 
-### Schema Generation
+All endpoints are under `/api/workspaces` and require an authenticated session (see [CLOUD-DEPLOYMENT.md](CLOUD-DEPLOYMENT.md)).
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/generate-schema` | POST | Generate schema for a single URL |
-| `/api/ai/generate-schema` | POST | AI-powered generation with auto-verification |
-| `/api/ai/generate-schemas-batch` | POST | Batch AI generation for multiple URLs |
-| `/api/validate-schema` | POST | Quick local validation (no AI) |
-
-### Page Scraping
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/scrape-sitemap` | POST | Parse sitemap, return all URLs |
-| `/api/scrape-single` | POST | Scrape single page data |
-| `/api/detect-org-info` | POST | Auto-detect organization info from homepage |
-
-### RankMath Helper Plugin
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/rankmath/test-connection` | POST | Test helper plugin connection |
-| `/api/rankmath/find-post` | POST | Find post by slug or URL |
-| `/api/rankmath/get-schemas` | POST | Get existing schemas for a post |
-| `/api/rankmath/insert-schema` | POST | Insert single schema |
-| `/api/rankmath/insert-by-url` | POST | Insert schema by page URL |
-| `/api/rankmath/insert-multiple-by-url` | POST | Insert multiple schemas |
-| `/api/rankmath/delete-schemas` | POST | Delete schemas from a post |
-| `/api/rankmath/generate-and-insert` | POST | Full workflow: scrape → generate → insert |
-
-### Direct Database
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/db/test-connection` | POST | Test MySQL connection |
-| `/api/db/get-post` | POST | Get post by slug |
-| `/api/db/get-schemas` | POST | Get existing RankMath schemas |
-| `/api/db/insert-schema` | POST | Insert schema (dryRun: true by default) |
-| `/api/db/insert-from-graph` | POST | Insert @graph schema (splits automatically) |
-| `/api/db/delete-all-schemas` | POST | Delete all schemas from post |
-| `/api/db/rollback` | POST | Rollback to backup state |
-
-### AI Verification
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/ai/providers` | GET | Get available AI providers and models |
-| `/api/ai/verify` | POST | Full AI verification of page data |
-| `/api/ai/verify-page-type` | POST | Verify page type detection |
-| `/api/ai/verify-google-compliance` | POST | Check Google Rich Results compliance |
-| `/api/ai/verify-faqs` | POST | Verify extracted FAQs |
-| `/api/ai/extract-reviews` | POST | Extract reviews from page |
-
----
-
-## Schema Types Generated
-
-### For Service Pages
-
-| Schema Type | Description |
-|-------------|-------------|
-| `Service` | Service details with name, description, serviceType, provider, areaServed |
-| `HVACBusiness` | LocalBusiness subtype with phone, address, service catalog |
-| `FAQPage` | Auto-extracted FAQs from page (if found) |
-| `BreadcrumbList` | Navigation path from URL structure |
-| `WebPage` | Page metadata linking everything together |
-
-### For Location/Service Area Pages
-
-| Schema Type | Description |
-|-------------|-------------|
-| `Service` | Service with location-specific areaServed |
-| `HVACBusiness` | Business info with location's service area |
-| `Place` | Geographic location (city, state) |
-| `FAQPage` | Location-specific FAQs (if found) |
-| `BreadcrumbList` | Navigation path |
-| `WebPage` | Page metadata |
-
-### For Article/Blog Pages
-
-| Schema Type | Description |
-|-------------|-------------|
-| `Article` | Blog post with headline, author, datePublished, publisher |
-| `BreadcrumbList` | Navigation path |
-| `WebPage` | Page metadata |
+| `/sites` | GET/POST | List or register sites |
+| `/sites/:id` | GET/PUT/DELETE | Read, update, or remove a site |
+| `/sites/:id/test` | POST | Test the WordPress connection |
+| `/sites/:id/crawls` | POST | Start a crawl (sitemap, WordPress discovery, or explicit URLs) |
+| `/runs/:id` | GET | Read a run's pages and status |
+| `/runs/:id/generate` | POST | Generate AI schema for selected pages |
+| `/runs/:id/publish` | POST | Preview (`dryRun: true`) or apply a schema policy to selected pages |
+| `/runs/:id/rollback` | POST | Undo the last applied change for selected pages |
+| `/runs/:id/verify` | POST | Re-check selected pages' live public schema |
+| `/settings/ai` | GET/PUT | Read or save AI provider settings |
+| `/connector` | GET | Download the Workspace Connector plugin ZIP |
 
 ---
 
 ## Anti-Firewall Measures
 
-The app includes measures to avoid being blocked by WordPress security plugins (BlogVault, Wordfence, Sucuri, etc.).
+The app includes measures to avoid being blocked by WordPress security plugins (BlogVault, Wordfence, Sucuri, etc.) while crawling — see `src/services/pageScraper.js`:
 
-### Implemented Protections
+- **User-Agent rotation** across a pool of real browser strings
+- **Rate limiting** (minimum delay between requests, configurable via `MIN_REQUEST_INTERVAL`)
+- **Browser fingerprint headers** (`Sec-Fetch-*`, `sec-ch-ua*`, `Accept-Language`, `Referer`, etc.)
 
-1. **User-Agent Rotation** (`src/services/pageScraper.js:7-14`)
-   ```javascript
-   const USER_AGENTS = [
-     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0',
-     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121.0.0.0',
-     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0',
-     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
-     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15',
-     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/122.0.0.0'
-   ];
-   ```
-
-2. **Rate Limiting** (`src/services/pageScraper.js:33-34`)
-   - Minimum 1.5 seconds between requests
-   - Configurable via `MIN_REQUEST_INTERVAL` constant
-
-3. **Browser Fingerprint Headers** (`src/services/pageScraper.js:39-61`)
-   - Full set of headers that mimic real browser:
-   - `Sec-Fetch-Dest`, `Sec-Fetch-Mode`, `Sec-Fetch-Site`, `Sec-Fetch-User`
-   - `sec-ch-ua`, `sec-ch-ua-mobile`, `sec-ch-ua-platform`
-   - `Accept-Language`, `Accept-Encoding`, `Cache-Control`
-   - `Referer` pointing to site homepage
-
-4. **Sitemap Headers** (`src/services/sitemapParser.js:12-25`)
-   - Same browser-like headers applied to sitemap requests
-
-### If Still Getting Blocked
-
-- Increase `MIN_REQUEST_INTERVAL` in `pageScraper.js` (try 3000-5000ms)
-- Whitelist your IP in the WordPress firewall plugin
-- Use a proxy service
-- Switch to direct database connection (bypasses web requests entirely)
+If a target site still blocks crawling, whitelist the app's IP in the WordPress firewall plugin or increase the rate-limit interval.
 
 ---
 
 ## Troubleshooting
 
-### "Failed to fetch" Error
-- Target site may be blocking automated requests
-- Check if site has firewall plugin active
-- Try increasing delay between requests
-- Use direct database connection instead
+### "Failed to fetch" / crawl errors
+- Target site may be blocking automated requests; check for an active firewall plugin
+- Try increasing the delay between requests in `pageScraper.js`
 
-### "Bulk publish stuck at 42/42"
-- Fixed in v2.8.1 - make sure you have latest version
-- If still stuck, check browser console for errors
+### WordPress connection fails
+- Confirm the Application Password is current (WordPress revokes it if the user's password changes)
+- For the connector integration, confirm the plugin is installed and activated
+- For direct REST metadata, confirm the target field is registered with `show_in_rest: true`
 
-### "Invalid token" on RankMath Helper
-- Verify secret token in WordPress snippet matches what you entered
-- Check for extra spaces or characters in token
-- Ensure snippet is activated in WordPress
-
-### "Schema Generator Helper plugin not found"
-- Ensure PHP snippet is activated in WordPress Code Snippets
-- Check WordPress debug.log for PHP errors
-- Verify REST API is not blocked by security plugin
-- Try visiting `yoursite.com/wp-json/schema-generator/v1/find` directly
-
-### "Post not found"
-- Verify post/page is published (not draft/private)
-- Check slug matches the URL path
-- For hierarchical pages, try using full URL instead of slug
-
-### Connection Timeout
-- Increase timeout in request options
-- Check server/network connectivity
-- Site may be slow or overloaded
-
----
-
-## Recent Changes v2.8.1
-
-### Bug Fixes
-- **Fixed "failed to fetch"**: Updated User-Agent headers to realistic browser strings with full fingerprint
-- **Fixed bulk publish hang**: UI was blocking on completion - wrapped DOM updates in setTimeout
-- **Fixed SQL injection risk**: Table prefix now sanitized to alphanumeric + underscore only
-- **Fixed undefined handling**: phpSerialize now explicitly handles undefined values
-- **Improved Gemini validation**: Better error messages for blocked/empty API responses
-
-### New Features
-- **Dark Mode**: Full Dracula color theme with CSS variables
-- **Theme Persistence**: Saves preference to localStorage
-- **Back-to-Top Button**: Appears on scroll for easy navigation
-- **Download All Schemas**: Export as single JSON or ZIP with separate files
-- **User-Agent Rotation**: Pool of 6 different real browser user agents
-- **Rate Limiting**: 1.5 second minimum delay between scrape requests
-- **Browser Fingerprinting**: Complete Sec-Fetch-*, sec-ch-ua headers
-
-### Files Modified in v2.8.1
-- `src/services/pageScraper.js` - User-Agent rotation, rate limiting, browser headers
-- `src/services/sitemapParser.js` - Browser-like headers for sitemap requests
-- `src/services/databaseClient.js` - SQL injection fix, undefined handling
-- `src/services/ai/providers/gemini.js` - Response validation improvements
-- `public/css/style.css` - Dracula theme, dark mode CSS variables
-- `public/js/app.js` - Theme toggle, download all, bulk publish fix
-- `src/views/index.ejs` - Back-to-top button, download button
-- `src/views/partials/header.ejs` - Theme toggle button in nav
+### Schema doesn't appear on the live page
+- Purge page/CDN caches, then use **Verify live pages**
+- Confirm no other plugin is stripping or overriding the JSON-LD output
 
 ---
 
@@ -453,206 +216,86 @@ This section contains everything needed to continue development on this project.
 
 ### Project Overview
 
-Schema Generator is a Node.js/Express web application that:
-1. Scrapes WordPress websites to extract page content
-2. Generates JSON-LD schemas optimized for HVAC/home services
-3. Validates schemas using AI (OpenAI GPT or Google Gemini)
-4. Injects schemas into WordPress via RankMath SEO plugin
+Schema Workspace is a Node.js/Express application that:
+1. Crawls WordPress sites (sitemap, REST discovery, or explicit URLs)
+2. Generates JSON-LD schema per page with an AI provider (OpenAI or Gemini)
+3. Publishes it to WordPress via a Rank Math connector plugin or direct REST metadata, with dry-run preview and undo
+4. Persists sites, encrypted credentials, and run history behind a single administrator login
 
 ### File Structure
 
 ```
 schema-generator/
 ├── src/
-│   ├── index.js                    # Express server entry point (port 3000)
+│   ├── index.js                    # Express server entry point, admin bootstrap
+│   ├── auth.js                     # Session/CSRF middleware
 │   ├── routes/
-│   │   ├── index.js                # Page routes (renders EJS views)
-│   │   └── api.js                  # ALL REST API endpoints (~1600 lines)
+│   │   ├── index.js                # Page routes (renders the workspace view)
+│   │   └── workspaces.js           # All /api/workspaces REST endpoints
 │   ├── services/
+│   │   ├── authStore.js            # Administrator account + sessions (scrypt hashes)
+│   │   ├── workspaceStore.js       # Encrypted site/run persistence (data/workspace.json)
 │   │   ├── pageScraper.js          # Web scraping with anti-firewall measures
 │   │   ├── sitemapParser.js        # XML sitemap parsing
-│   │   ├── pageTypeDetector.js     # Detects article vs service vs location
-│   │   ├── schemaGenerator.js      # Main schema generation orchestrator
-│   │   ├── wordpressClient.js      # WP REST API client (Application Passwords)
-│   │   ├── databaseClient.js       # Direct MySQL connection for RankMath
-│   │   ├── rankMathClient.js       # Helper plugin REST client
-│   │   ├── logger.js               # Activity and token usage logging
+│   │   ├── pageSchema.js           # AI-driven schema generation + local validation
+│   │   ├── schemaDecision.js       # Existing-schema policy assessment (keep/replace/remove)
+│   │   ├── wordpressConnector.js   # Rank Math Workspace Connector REST client
+│   │   ├── wordpressRestMeta.js    # Direct REST post-meta client
 │   │   └── ai/
-│   │       ├── index.js            # AI provider factory (OpenAI/Gemini)
-│   │       ├── providers/
-│   │       │   ├── openai.js       # OpenAI GPT integration
-│   │       │   └── gemini.js       # Google Gemini integration
-│   │       ├── schemaGenerator.js  # AI-powered schema generation
-│   │       └── verifier.js         # AI schema verification
-│   ├── schemas/                    # Individual schema type generators
-│   │   ├── article.js              # Article/BlogPosting schema
-│   │   ├── service.js              # Service schema (HVAC-optimized)
-│   │   ├── location.js             # Location/service area pages
-│   │   ├── faq.js                  # FAQPage schema
-│   │   ├── localBusiness.js        # HVACBusiness/LocalBusiness schema
-│   │   └── breadcrumb.js           # BreadcrumbList schema
+│   │       ├── index.js            # AI provider factory (OpenAI/Gemini) + model lists
+│   │       └── providers/
+│   │           ├── openai.js
+│   │           └── gemini.js
 │   └── views/
-│       ├── index.ejs               # Main UI page
-│       ├── results.ejs             # Results display page
-│       └── partials/
-│           └── header.ejs          # Navigation with theme toggle
+│       ├── workspace.ejs           # The entire guided UI (sites, generate, publish)
+│       ├── login.ejs
+│       └── partials/header.ejs
 ├── public/
-│   ├── css/style.css               # All styles including Dracula dark theme
-│   └── js/app.js                   # Frontend JavaScript (~800 lines)
-├── tests/
-│   └── schemaGenerator.test.js     # 36 unit tests
-├── scripts/
-│   └── test-db-connection.js       # Database connection test utility
-├── logs/
-│   └── activity.json               # Activity logs
-├── wordpress-helper-plugin.php     # PHP snippet for WordPress
-├── .env.example                    # Environment template
-└── package.json                    # Dependencies and scripts
+│   ├── css/style.css
+│   └── js/
+│       ├── workspace.js            # All workspace UI logic
+│       ├── auth.js
+│       └── modelPicker.js
+├── wordpress/
+│   ├── schema-workspace.php        # Workspace Connector plugin source
+│   └── schema-workspace.zip        # Downloadable build (served at /api/workspaces/connector)
+├── tests/                          # node:test suite (npm test)
+├── scripts/admin-user.js           # Interactive administrator create/reset
+└── .env.example
 ```
-
-### Three WordPress Integration Methods
-
-1. **REST API** (`src/services/wordpressClient.js`)
-   - Uses WordPress Application Passwords
-   - Standard WP REST API endpoints
-   - Less reliable for RankMath schema injection
-
-2. **Direct Database** (`src/services/databaseClient.js`)
-   - Connects directly to MySQL
-   - Uses PHP serialization format for RankMath
-   - Most reliable, bypasses all WP security
-   - Has dry-run mode (default) and rollback capability
-
-3. **Helper Plugin** (`src/services/rankMathClient.js`)
-   - Uses custom PHP snippet on WordPress
-   - Creates dedicated REST endpoints
-   - Secure via secret token authentication
-   - Recommended method for most users
-
-### RankMath Schema Storage Format
-
-Schemas are stored in `wp_postmeta` table:
-
-```
-Meta Key: rank_math_schema_{SchemaType}
-Example: rank_math_schema_Service, rank_math_schema_FAQPage
-
-Value: PHP serialized array with structure:
-a:X:{
-  s:8:"metadata";a:Y:{
-    s:5:"title";s:7:"Service";
-    s:4:"type";s:6:"custom";
-    s:9:"shortcode";s:14:"s-abc123def456";
-    s:9:"isPrimary";s:1:"1";        // Only for primary schema
-    s:4:"name";s:11:"%seo_title%";
-    s:11:"description";s:17:"%seo_description%";
-  }
-  s:5:"@type";s:7:"Service";
-  s:4:"name";s:...;
-  // ... rest of schema properties
-}
-```
-
-### Page Type Detection Logic
-
-Located in `src/services/pageTypeDetector.js`:
-
-- **Articles**: Has publish date AND author, OR `/blog/` in URL
-- **Services**: `/service/` in URL, OR keywords like "repair", "installation", "maintenance"
-- **Locations**: `/location/` in URL, OR city names with service keywords
 
 ### Schema Generation Flow
 
-1. `pageScraper.scrape(url)` - Extracts page content, FAQs, phone, etc.
-2. `pageTypeDetector.detect(url, pageData)` - Determines page type
-3. `schemaGenerator.generate(pageType, pageData, orgInfo, options)` - Creates @graph
-4. Individual schema generators called based on page type:
-   - `articleSchema.generate()` for articles
-   - `serviceSchema.generate()` for services
-   - `localBusinessSchema.generate()` for business info
-   - `faqSchema.generate()` for FAQs
-   - `breadcrumbSchema.generate()` for navigation
-
-### Anti-Firewall Implementation
-
-Located in `src/services/pageScraper.js`:
-
-```javascript
-// Line 7-14: User-Agent pool
-const USER_AGENTS = [...];
-
-// Line 19-21: Random selection
-function getRandomUserAgent() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
-
-// Line 33-34: Rate limiting
-let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 1500; // 1.5 seconds
-
-// Line 39-61: Full browser headers
-function getBrowserHeaders(url) {
-  return {
-    'User-Agent': getRandomUserAgent(),
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'sec-ch-ua': '"Chromium";v="122"...',
-    // ... more headers
-  };
-}
-
-// Line 67-73: Rate limit enforcement in scrape()
-const timeSinceLastRequest = now - lastRequestTime;
-if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-  await delay(MIN_REQUEST_INTERVAL - timeSinceLastRequest);
-}
-```
+1. `pageScraper.scrape(url)` — extracts page content, FAQs, phone, existing JSON-LD, etc.
+2. `pageSchema.generateAI(page, options)` — calls the configured AI provider to produce a full `@graph`
+3. `pageSchema.validate(schema, page)` — local structural checks (not a Rich Results guarantee)
+4. `schemaDecision.assess(...)` — compares proposed vs. existing schema and decides skip/block/proceed per the chosen policy
+5. `wordpressConnector` or `wordpressRestMeta` — writes, verifies against the public page, and records a rollback receipt
 
 ### AI Providers
 
 Located in `src/services/ai/`:
+- **OpenAI** (`providers/openai.js`) — `OPENAI_API_KEY`
+- **Gemini** (`providers/gemini.js`) — `GEMINI_API_KEY`
 
-- **OpenAI** (`providers/openai.js`): Uses `OPENAI_API_KEY`, models: gpt-4o, gpt-4-turbo, gpt-3.5-turbo
-- **Gemini** (`providers/gemini.js`): Uses `GEMINI_API_KEY`, models: gemini-1.5-pro, gemini-1.5-flash
-
-Default provider is Gemini (set in `ai/schemaGenerator.js`).
-
-### Key Configuration Points
-
-To modify behavior:
-
-- **Rate limiting**: Change `MIN_REQUEST_INTERVAL` in `pageScraper.js:34`
-- **User agents**: Update `USER_AGENTS` array in `pageScraper.js:7-14`
-- **Default business type**: Change `DEFAULT_BUSINESS_TYPE` in `.env`
-- **Schema types generated**: Modify `schemaGenerator.js:generate()` function
-- **AI prompts**: Edit prompts in `ai/schemaGenerator.js` and `ai/verifier.js`
+Both keys can also be saved (encrypted) per-workspace in **AI Settings**, which take precedence over environment keys.
 
 ### Running Tests
 
 ```bash
-npm test  # Runs 36 tests covering all schema generators
+npm test              # Unit/integration tests against fixtures (no real WordPress)
+npm run test:wordpress  # Full crawl→generate→publish→rollback against disposable WordPress containers (see tests/integration/)
 ```
 
 ### Common Tasks
 
-**Add new schema type:**
-1. Create new file in `src/schemas/`
-2. Import in `src/services/schemaGenerator.js`
-3. Add to `generate()` function
-4. Add tests in `tests/schemaGenerator.test.js`
+**Modify scraping behavior**: edit `src/services/pageScraper.js` (`scrape()`, `extractFAQs()`, `extractPhone()`, `extractServiceAreas()`, etc.).
 
-**Modify scraping behavior:**
-- Edit `src/services/pageScraper.js`
-- Key functions: `scrape()`, `extractFAQs()`, `extractPhone()`, `extractServiceAreas()`
+**Change AI prompts/behavior**: edit `src/services/ai/providers/openai.js` / `gemini.js`, or the shared shaping logic in `src/services/pageSchema.js`.
 
-**Change AI behavior:**
-- Edit prompts in `src/services/ai/schemaGenerator.js` (SCHEMA_PROMPT)
-- Edit verification in `src/services/ai/verifier.js`
+**Update WordPress integration**: `src/services/wordpressConnector.js` (connector) or `src/services/wordpressRestMeta.js` (direct REST); the connector's own PHP lives in `wordpress/schema-workspace.php` (rebuild the ZIP after editing it).
 
-**Update WordPress integration:**
-- Helper plugin: `src/services/rankMathClient.js` + `wordpress-helper-plugin.php`
-- Direct DB: `src/services/databaseClient.js`
-- REST API: `src/services/wordpressClient.js`
+**Add a workspace UI action**: `src/views/workspace.ejs` (markup) + `public/js/workspace.js` (behavior, reusing the existing `/api/workspaces/*` endpoints where possible instead of adding new server routes).
 
 ---
 

@@ -42,14 +42,32 @@ describe('Workspace Store', () => {
     assert.strictEqual(store.getRun(run.id), null);
   });
 
-  test('normalizes customizable metadata mappings', () => {
+  test('normalizes REST metadata mappings and defaults to the connector integration', () => {
+    const defaulted = store.createSite({ name: 'Example', url: 'https://example.com' });
+    assert.strictEqual(defaulted.mapping.integration, 'connector');
+    assert.strictEqual(defaulted.mapping.restEncoding, 'json-string');
+
     const site = store.createSite({
       name: 'Shop', url: 'https://shop.example.com',
-      mapping: { postTypes: ['products'], schemaMetaPrefix: '_custom_schema_', richSnippetKey: '_snippet' }
+      mapping: { integration: 'rest-meta', restMetaKey: '_custom_schema_', restEncoding: 'object', restOverrides: { product: { key: 'product_jsonld', encoding: 'object' } } }
     });
-    assert.deepStrictEqual(site.mapping.postTypes, ['products']);
-    assert.strictEqual(site.mapping.schemaMetaPrefix, '_custom_schema_');
-    assert.strictEqual(site.mapping.richSnippetKey, '_snippet');
-    assert.strictEqual(site.mapping.fallbackToContent, false);
+    assert.strictEqual(site.mapping.integration, 'rest-meta');
+    assert.strictEqual(site.mapping.restMetaKey, '_custom_schema_');
+    assert.strictEqual(site.mapping.restEncoding, 'object');
+    assert.deepStrictEqual(site.mapping.restOverrides, { product: { key: 'product_jsonld', encoding: 'object' } });
+  });
+
+  test('validates the optional default schema image', () => {
+    const bare = store.createSite({ name: 'Example', url: 'https://example.com' });
+    assert.strictEqual(bare.organization.image, '');
+
+    const withImage = store.createSite({ name: 'Shop', url: 'https://shop.example.com', organization: { image: 'https://shop.example.com/brand.jpg' } });
+    assert.strictEqual(withImage.organization.image, 'https://shop.example.com/brand.jpg');
+
+    assert.throws(() => store.createSite({ name: 'Bad', url: 'https://bad.example.com', organization: { image: 'not-a-url' } }), /https:\/\/ URL/);
+    assert.throws(() => store.createSite({ name: 'Bad', url: 'https://bad.example.com', organization: { image: 'http://insecure.example.com/x.jpg' } }), /https:\/\/ URL/);
+
+    const updated = store.updateSite(withImage.id, { organization: { image: '' } });
+    assert.strictEqual(updated.organization.image, '');
   });
 });

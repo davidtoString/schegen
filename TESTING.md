@@ -3,7 +3,7 @@
 ## Verified in this revision
 
 - 53 automated tests passed locally and in Docker, covering authentication and CSRF protections as well as mandatory AI generation, schema policies, before/after review, conflict protection, undo, shared navigation, encrypted settings, and model selection. Prior browser testing confirmed automatic crawl → generation → review transitions, automatic preview and approval-gated Apply.
-- Login tests cover unauthenticated UI/API blocking, same-origin checks, CSRF rejection, password hashing, session expiry/revocation, password reset and throttling. The interactive administrator-creation command was checked in an isolated disposable container. The running Docker app was checked for protected guided/legacy routes, logs and connector download; no real administrator password was set by the agent.
+- Login tests cover unauthenticated UI/API blocking, same-origin checks, CSRF rejection, password hashing, session expiry/revocation, password reset and throttling. The interactive administrator-creation command was checked in an isolated disposable container. The running Docker app was checked for protected guided routes, logs and connector download; no real administrator password was set by the agent.
 - Six end-to-end workflows passed against actual WordPress 7.1 installations using PHP 8.3 and MariaDB 11.4: two prefixes × direct REST, connector, and connector with free Rank Math. Rank Math tests additionally verified replacement, removal and undo.
 - Direct REST ran with the connector deactivated; the fixture's registered field and renderer supplied the site-side integration.
 - Docker production dependency installation reported zero known vulnerabilities at build time.
@@ -15,7 +15,7 @@
 npm test
 ```
 
-Includes legacy generator tests, encrypted workspace persistence, the guided HTTP workflow, and direct REST contract tests. Direct REST cases cover independent string/object field configurations, per-type overrides, custom namespaces, subdirectory site URLs, nested duplicate slugs, pagination, no-write preview, no credential leakage to public requests, missing/read-only fields, stale snapshots, ignored writes, 403 responses and absent rendering. Internal WordPress template/navigation types are excluded from discovery.
+Includes authentication, encrypted workspace persistence, the guided HTTP workflow, and direct REST contract tests. Direct REST cases cover independent string/object field configurations, per-type overrides, custom namespaces, subdirectory site URLs, nested duplicate slugs, pagination, no-write preview, no credential leakage to public requests, missing/read-only fields, stale snapshots, ignored writes, 403 responses and absent rendering. Internal WordPress template/navigation types are excluded from discovery.
 
 ## Real WordPress suite
 

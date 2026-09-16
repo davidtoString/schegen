@@ -1,18 +1,24 @@
 # Private Docker cloud deployment
 
-The app now requires a single administrator login for the dashboard, guided and legacy APIs, records, and connector download. There is no public signup, default password, or unauthenticated workspace access. All sites belong to this one administrator; this is not a multi-tenant SaaS.
+The app now requires a single administrator login for the dashboard, API, records, and connector download. There is no public signup, default password, or unauthenticated workspace access. All sites belong to this one administrator; this is not a multi-tenant SaaS.
 
 ## Local account setup
 
-After `docker compose up --build -d`, run:
+Two ways to create the administrator account:
 
-```sh
-docker compose exec schema-workspace node scripts/admin-user.js admin
-```
+- **Interactive (no password touches disk/env):**
 
-Choose and confirm a password longer than 8 characters (9 minimum, 256 maximum). Input is hidden and is not passed as a command argument or environment variable. Open http://localhost:3000 and sign in. Use the exact configured `PUBLIC_URL`; another origin will fail security checks. Replace `admin` with your preferred username.
+  ```sh
+  docker compose exec schema-workspace node scripts/admin-user.js admin
+  ```
 
-The same command resets/replaces the administrator and revokes all sessions. It does not change sites, AI keys, crawl records or schemas. Password recovery requires server terminal access; there is no email reset or public account creation. Existing DASHBOARD_USER/DASHBOARD_PASSWORD Basic authentication settings are no longer used and should be removed from deployment secrets.
+  Choose and confirm a password longer than 8 characters (9 minimum, 256 maximum). Input is hidden and is not passed as a command argument or environment variable. Replace `admin` with your preferred username.
+
+- **Env bootstrap (convenient for first-run automation):** set `DASHBOARD_USER`/`DASHBOARD_PASSWORD` in `.env` before starting the container. If no administrator exists yet, the app creates one from those values on startup and logs that it did so. Once an administrator exists, these variables have no further effect — leaving them in `.env` does not reset the password on later restarts. To change the password afterward, use the interactive script above (don't just edit `.env` and restart).
+
+Either way, open http://localhost:3000 and sign in. Use the exact configured `PUBLIC_URL`; another origin will fail security checks.
+
+The interactive script resets/replaces the administrator and revokes all sessions on every run. It does not change sites, AI keys, crawl records or schemas. Password recovery requires server terminal access (or the env bootstrap, if the account was never configured); there is no email reset or public account creation.
 
 ## Cloud server with HTTPS
 
@@ -43,13 +49,22 @@ Use `compose.traefik.yaml` instead:
    zone use.
 3. Create `.env` from `.env.example` and set `APP_DOMAIN=schema.datadeposit.xyz`
    plus a strong permanent `APP_SECRET` (32+ chars, `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
-   Leave `PUBLIC_URL` unset — the compose file derives it from `APP_DOMAIN`.
+   Leave `PUBLIC_URL` unset — the compose file derives it from `APP_DOMAIN`. Optionally
+   also set `DASHBOARD_USER`/`DASHBOARD_PASSWORD` to bootstrap the administrator
+   account on first start instead of running the interactive script below (see
+   "Local account setup" above).
 4. Confirm the external `web` network exists (`docker network inspect web`;
    it's created once by the proxy's own compose project, not by this app).
-5. Bring it up and create the admin account:
+5. Bring it up:
 
    ```sh
    docker compose -f compose.traefik.yaml up -d --build
+   ```
+
+   If you didn't set `DASHBOARD_USER`/`DASHBOARD_PASSWORD` in `.env`, create the
+   admin account now:
+
+   ```sh
    docker compose -f compose.traefik.yaml exec schema-workspace node scripts/admin-user.js admin
    ```
 

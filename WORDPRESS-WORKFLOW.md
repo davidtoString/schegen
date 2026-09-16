@@ -1,12 +1,12 @@
 # WordPress workflow
 
-The main dashboard implements three operations: **Crawl → Create schema → Insert**.
+The main dashboard is a single-page guided wizard: **1. Pages → 2. Action → 3. Review → 4. Apply**.
 
 ## One connected workspace
 
-The primary tabs are **Sites & Crawl**, **Generate**, and **Results & Publish**. All three use the same registered site, selected run, server-saved schemas and history. Switching tabs does not reload the page or discard selected rows. The URL carries `site` and `run` identifiers for refreshes/bookmarks, and the last selection is remembered for this browser tab. Results are the actual workspace run records—not a separate browser-local list. Select a different site in the rail to switch context; use Results & Publish → Previous runs to reopen older work.
+Pick or add a site in the left rail, then step through the wizard for it: **Pages** (crawl and check which pages to work with), **Action** (choose Create new schema or Delete existing schema — an explicit choice, not a dropdown), **Review** (generate/preview and inspect the before/after per page), **Apply** (approve and write to WordPress, then verify or undo). The step indicator shows progress and lets you jump back to any completed step; you can't skip ahead. The page list and its checkboxes stay visible below the wizard at every step, so which pages you're affecting is never ambiguous. The URL carries `site` and `run` identifiers for refreshes/bookmarks, and the last selection is remembered for this browser tab. Run history holds the actual saved workspace runs — select a different site in the rail, or a past run in **Run history**, to switch context (this always returns you to the Pages step for that run).
 
-The previous standalone generator and localStorage results are preserved at `/legacy/generator` and `/legacy/results`, accessible from the footer. They are explicitly labeled legacy and are not silently merged into current run history. Main `/generator` and `/results` URLs now open the connected workspace.
+The previous standalone generator, its browser-local results, and the old tab-based navigation have all been removed; `/generator` and `/results` redirect to the wizard.
 
 ## Connect a site once
 
@@ -51,29 +51,28 @@ This is a public HTML crawler. JavaScript-only content and WAF-protected pages m
 
 ### Save AI credentials in the UI
 
-Click **AI Settings** from any workspace tab (no registered site required). Choose the default provider, paste a new OpenAI or Gemini API key, optionally enter a default model ID for each provider, and click **Save settings**. Changes apply immediately without Docker restart. Keys are encrypted in the persistent app data using APP_SECRET and are never returned in settings responses or saved in browser storage. Blank inputs keep existing keys; the explicit remove checkbox removes the UI-saved key. Existing environment keys remain available and cannot be removed through this panel. Saving confirms storage, not provider validity; generation checks actual access and may incur provider charges.
+Click **AI Settings** from anywhere in the workspace (no registered site required). Choose the default provider, paste a new OpenAI or Gemini API key, optionally enter a default model ID for each provider, and click **Save settings**. Changes apply immediately without Docker restart. Keys are encrypted in the persistent app data using APP_SECRET and are never returned in settings responses or saved in browser storage. Blank inputs keep existing keys; the explicit remove checkbox removes the UI-saved key. Existing environment keys remain available and cannot be removed through this panel. Saving confirms storage, not provider validity; generation checks actual access and may incur provider charges.
 
-Precedence is request-only override → UI-saved key → environment key. The panel applies to the guided workspace across all sites, not the archived legacy generator. Anyone with dashboard access can use these shared credentials; keep the app local or protect it with authentication and HTTPS. Keep APP_SECRET stable and back up the data volume.
+Precedence is request-only override → UI-saved key → environment key. The panel applies to the guided workspace across all sites. Anyone with dashboard access can use these shared credentials; keep the app local or protect it with authentication and HTTPS. Keep APP_SECRET stable and back up the data volume.
 
 Model controls in AI Settings and Generate are provider-specific dropdowns with a Custom model ID option. Saved custom IDs are preserved; switching providers in Generate retains each provider's in-progress selection. Choosing the default option uses the saved model (or the named app default). The list is a small compatibility-oriented catalog, not a live account-access list or a ranking of the newest models. Custom IDs must support this app's provider API; listing or saving a model does not verify account access. The OpenAI options were checked against [GPT-4o](https://developers.openai.com/api/docs/models/gpt-4o) and [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1) documentation; Gemini options against the [Google model catalog](https://ai.google.dev/gemini-api/docs/models). Existing explicit saved IDs are not silently migrated.
 
-Select successfully crawled pages. **Generation always uses AI**, enforced by the server even if a caller sends `useAI: false`. Configure a key in AI Settings first. Missing keys or provider errors stop generation; there is no deterministic fallback. Provider and model are recorded per page without the key. Generation uses crawled content and existing schema as evidence, not permission to invent claims. A completed crawl opens AI Schema automatically; completed generation opens Review & Publish and prepares a read-only preview.
+Select successfully crawled pages, continue to the **Action** step, and choose **Create new schema**. **Generation always uses AI**, enforced by the server even if a caller sends `useAI: false`. Configure a key in AI Settings first. Missing keys or provider errors stop generation; there is no deterministic fallback. Provider and model are recorded per page without the key. Generation uses crawled content and existing schema as evidence, not permission to invent claims. Nothing advances automatically — after generation finishes, you explicitly click **Preview changes** and then **Continue to Apply** yourself.
 
 Review the generated JSON-LD, existing JSON-LD, crawled text, and validation messages in each row. AI output requires factual review. Local validation checks graph structure, URL, content and noindex; it is not a complete Schema.org validator or Google Rich Results Test. Generic WebPage markup does not itself produce a rich result. Generation does not change visible page copy or promise better rankings or agent browsing.
 
 ## 3. Insert
 
-Choose **Existing schema** in Review & Publish:
+Choosing **Delete existing schema** on the Action step always removes the app graph and suppresses Rank Math output — no generated graph is required, and there is no further policy choice to make. Choosing **Create new schema** instead opens an **"If a page already has schema"** selector on the Review step:
 
-| Action | Effect on selected pages |
+| Policy | Effect on selected pages |
 | --- | --- |
-| Replace existing Rank Math schema (default) | Suppresses Rank Math's page graph and renders the reviewed AI graph. |
-| Remove schema from this page | Removes the app graph and suppresses Rank Math output; no generated graph is required. |
+| Replace it with the new AI schema (default) | Suppresses Rank Math's page graph and renders the reviewed AI graph. |
 | Keep existing | Skips pages with existing JSON-LD or occupied target storage. |
 | Replace only the app's previous schema | Replaces app-owned storage; blocks other public graphs. |
 | Advanced: keep Rank Math output and add app schema | Preserves Rank Math output; conflicts require review and overlapping IDs can block insertion. |
 
-Click **Preview changes**, open **Review** on each row, approve the before/after checkbox, then **Apply reviewed changes** (or **Remove schema from selected pages**). Confirm the selected action. A fresh matching preview is required; changed storage, public JSON-LD, schema or policy requires another preview. Occupied unowned direct REST fields cannot be overwritten.
+On the Review step, click **Preview changes**, open **Review** on each row, then continue to Apply. There, approve the before/after checkbox and click **Apply reviewed changes** (or **Remove schema from selected pages** for the delete action). A fresh matching preview is required; changed storage, public JSON-LD, schema or policy requires another preview. Occupied unowned direct REST fields cannot be overwritten.
 
 Replacement/removal requires Connector **1.2+**. It uses Rank Math's `rank_math/json_ld` filter, not SQL or vendor metadata mutation. The entire Rank Math graph on the selected singular page is suppressed, including its Website, Organization and breadcrumb nodes: ensure the replacement graph retains appropriate factual entities. Rank Math settings and Pro metadata remain intact. Other plugins' output is NOT removed. Free Rank Math was integration-tested; Rank Math Pro still needs staging acceptance with your installed version. Disabling the connector restores ordinary Rank Math output.
 
@@ -85,7 +84,7 @@ Preview resolves each target without writing. Before each external write the app
 
 Use `npm ci` then `npm start`, or `docker compose up --build -d`. Compose binds to `127.0.0.1:3000`, uses Node 24 and persists data in a named volume. Keep APP_SECRET stable and back up the data. The JSON store supports one app process; do not run multiple replicas against it. Active jobs interrupted by restart are marked interrupted, retaining completed results for retry. History is no longer silently truncated after 250 runs.
 
-Existing runs without saved crawl content need to be crawled again. Existing site registrations without an integration setting retain connector behavior; new UI registrations default to the connector. Regenerate older deterministic schemas with AI before publishing. Legacy helper-token registrations can still use `/legacy/generator`, or switch to Application Passwords. Legacy metadata-prefix settings are not used by this workflow. Older specialized HVAC generation remains in the legacy generator. No post-content fallback is used by the guided workflow.
+Existing runs without saved crawl content need to be crawled again. Existing site registrations without an integration setting retain connector behavior; new UI registrations default to the connector. Regenerate older deterministic schemas with AI before publishing. No post-content fallback is used by the guided workflow.
 
 ## Verification
 

@@ -100,33 +100,11 @@ async function fetchWithRetry(url, maxRetries = 3) {
 }
 
 /**
- * Fetch raw HTML for a URL.
- * Tries the RankMath helper plugin first (server-side, bypasses CDN/WAF),
- * then falls back to direct fetch with rate limiting.
+ * Fetch raw HTML for a URL, with rate limiting.
  * @param {string} url - URL to fetch
- * @param {object} [helperConfig] - { siteUrl, secretToken } for helper plugin
  * @returns {string} - Raw HTML string
  */
-async function fetchHtml(url, helperConfig) {
-  // Try via RankMath helper plugin (server-to-server, bypasses CDN/WAF)
-  if (helperConfig && helperConfig.siteUrl && helperConfig.secretToken) {
-    try {
-      const rankMathClient = require('./rankMathClient');
-      const client = rankMathClient.create(helperConfig);
-      const result = await client.getPageHtml(url);
-      if (result.success && result.html && result.status_code >= 200 && result.status_code < 400) {
-        console.log(`[fetchHtml] Helper returned ${result.html.length} chars for ${url} (status ${result.status_code})`);
-        return result.html;
-      }
-      console.log(`[fetchHtml] Helper returned empty/failed for ${url}, falling back`);
-    } catch (e) {
-      // Helper failed, fall through to direct fetch
-      console.log(`[fetchHtml] Helper fetch failed for ${url}, falling back to direct: ${e.message}`);
-    }
-  }
-
-  // Direct fetch with rate limiting
-  console.log(`[fetchHtml] Using direct fetch for ${url} (no helper or helper failed)`);
+async function fetchHtml(url) {
   const now = Date.now();
   const timeSinceLastRequest = now - lastRequestTime;
   if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
@@ -135,16 +113,15 @@ async function fetchHtml(url, helperConfig) {
   lastRequestTime = Date.now();
 
   const response = await fetchWithRetry(url);
-  console.log(`[fetchHtml] Direct fetch returned ${(response.data || '').length} chars for ${url} (status ${response.status})`);
   return response.data;
 }
 
 /**
  * Scrape a page and extract relevant content for schema generation
  */
-async function scrape(url, options = {}) {
+async function scrape(url) {
   try {
-    const html = await fetchHtml(url, options.helperConfig);
+    const html = await fetchHtml(url);
 
     const $ = cheerio.load(html);
 
@@ -305,14 +282,28 @@ function extractModifiedDate($) {
   return '';
 }
 
+// Filenames/classes/alt text typical of dividers, spacers, icons, logos and other
+// decorative images that are not a page's actual content photo.
+const DECORATIVE_IMAGE_PATTERN = /divider|separator|spacer|border|pixel|blank|transparent|bullet|icon|logo|badge|avatar|arrow|chevron|social|share|rating|star|placeholder/i;
+const MIN_CONTENT_IMAGE_DIMENSION = 100;
+
+function isLikelyContentImage($, el) {
+  const src = $(el).attr('src') || '';
+  if (!src || /\.svg(\?|$)/i.test(src)) return false;
+  const width = parseInt($(el).attr('width'), 10);
+  const height = parseInt($(el).attr('height'), 10);
+  if ((Number.isFinite(width) && width < MIN_CONTENT_IMAGE_DIMENSION) || (Number.isFinite(height) && height < MIN_CONTENT_IMAGE_DIMENSION)) return false;
+  const signals = [src, $(el).attr('class') || '', $(el).attr('id') || '', $(el).attr('alt') || ''].join(' ');
+  return !DECORATIVE_IMAGE_PATTERN.test(signals);
+}
+
 function extractFeaturedImage($) {
-  return (
-    $('meta[property="og:image"]').attr('content') ||
-    $('meta[property="og:image:url"]').attr('content') ||
-    $('[itemprop="image"]').attr('content') ||
-    $('article img').first().attr('src') ||
-    ''
-  );
+  // og:image / itemprop=image are explicit metadata the site declares for sharing — trust them as-is.
+  const declared = $('meta[property="og:image"]').attr('content') || $('meta[property="og:image:url"]').attr('content') || $('[itemprop="image"]').attr('content');
+  if (declared) return declared;
+  // Otherwise, scan for the first plausible content photo, skipping dividers/spacers/icons/logos.
+  const candidate = $('article img').toArray().find(el => isLikelyContentImage($, el));
+  return candidate ? $(candidate).attr('src') : '';
 }
 
 function extractCategories($) {
@@ -652,496 +643,7 @@ function extractServiceAreas($) {
   return [...new Set(cleaned)].slice(0, 30);  // Allow more areas
 }
 
-/**
- * Extract organization info from a page (usually homepage)
- * @param {string} url - URL to scrape (typically homepage)
- * @returns {object} - Organization info
- */
-async function scrapeOrgInfo(url, helperConfig) {
-  try {
-    const html = await fetchHtml(url, helperConfig);
-
-    const $ = cheerio.load(html);
-
-    // Extract base URL
-    const urlObj = new URL(url);
-    const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-
-    // Extract organization name
-    const orgName = extractOrgName($, baseUrl);
-
-    // Extract logo
-    const logo = extractLogo($, baseUrl);
-
-    // Extract phone
-    const phone = extractPhone($);
-
-    // Extract address
-    const address = extractAddress($);
-
-    // Extract social profiles
-    const socialProfiles = extractSocialProfiles($);
-
-    // Extract service areas from page
-    const serviceAreas = extractServiceAreas($);
-
-    // Extract email
-    const email = extractEmail($);
-
-    // Detect business type from content
-    const businessType = detectBusinessType($);
-
-    return {
-      name: orgName,
-      url: baseUrl,
-      logo: logo,
-      phone: phone,
-      email: email,
-      address: address,
-      serviceAreas: serviceAreas,
-      socialProfiles: socialProfiles,
-      businessType: businessType
-    };
-  } catch (error) {
-    throw new Error(`Failed to scrape organization info: ${error.message}`);
-  }
-}
-
-/**
- * Extract organization name
- */
-function extractOrgName($, baseUrl) {
-  // Try various sources for org name
-  return (
-    $('meta[property="og:site_name"]').attr('content') ||
-    $('[itemtype*="Organization"] [itemprop="name"]').first().text().trim() ||
-    $('[itemtype*="LocalBusiness"] [itemprop="name"]').first().text().trim() ||
-    $('.site-title, .logo-text, .brand-name').first().text().trim() ||
-    $('header .logo a').first().text().trim() ||
-    $('header a[href="/"], header a[href="' + baseUrl + '"]').first().text().trim() ||
-    $('footer .company-name, footer .business-name').first().text().trim() ||
-    $('title').text().split('|')[0].split('-')[0].trim() ||
-    ''
-  );
-}
-
-/**
- * Extract logo URL
- */
-function extractLogo($, baseUrl) {
-  let logo = (
-    $('meta[property="og:image"]').attr('content') ||
-    $('[itemtype*="Organization"] [itemprop="logo"]').attr('src') ||
-    $('[itemtype*="Organization"] [itemprop="logo"] img').attr('src') ||
-    $('header .logo img, .site-logo img, .custom-logo').first().attr('src') ||
-    $('header img[alt*="logo" i]').first().attr('src') ||
-    $('img.logo, img[class*="logo"]').first().attr('src') ||
-    ''
-  );
-
-  // Make absolute URL if relative
-  if (logo && !logo.startsWith('http')) {
-    logo = new URL(logo, baseUrl).href;
-  }
-
-  return logo;
-}
-
-/**
- * Extract address from page
- */
-function extractAddress($) {
-  // Look for structured address (Schema.org microdata)
-  const streetAddress = $('[itemprop="streetAddress"]').first().text().trim();
-  const city = $('[itemprop="addressLocality"]').first().text().trim();
-  const state = $('[itemprop="addressRegion"]').first().text().trim();
-  const postalCode = $('[itemprop="postalCode"]').first().text().trim();
-  const country = $('[itemprop="addressCountry"]').first().text().trim();
-
-  if (streetAddress || city) {
-    const detectedCountry = detectCountryFromData(postalCode, state, city);
-    return {
-      streetAddress: streetAddress || undefined,
-      addressLocality: city || undefined,
-      addressRegion: state || undefined,
-      postalCode: postalCode || undefined,
-      addressCountry: country || detectedCountry
-    };
-  }
-
-  // Extended list of address selectors
-  const addressSelectors = [
-    '.address',
-    '.contact-address',
-    '.footer-address',
-    '.business-address',
-    '.company-address',
-    '.location-address',
-    '[class*="address"]',
-    '[class*="location"]',
-    'address',
-    '.contact-info',
-    '.footer .contact',
-    'footer address',
-    '.widget_text address',
-    '.elementor-widget-text-editor address'
-  ];
-
-  for (const selector of addressSelectors) {
-    const $el = $(selector).first();
-    const text = $el.text().trim();
-    if (text && text.length > 10 && text.length < 300) {
-      const parsed = parseAddressText(text);
-      if (parsed) return parsed;
-    }
-  }
-
-  // Look for address in footer text using patterns
-  const footerText = $('footer').text();
-  const parsed = parseAddressText(footerText);
-  if (parsed) return parsed;
-
-  // Try to find address near phone numbers (often together in contact sections)
-  const contactSections = $('*:contains("Contact"), *:contains("Address"), *:contains("Location")').filter((_, el) => {
-    const text = $(el).text();
-    return text.length < 500 && text.length > 20;
-  });
-
-  for (let i = 0; i < Math.min(contactSections.length, 5); i++) {
-    const text = $(contactSections[i]).text().trim();
-    const parsed = parseAddressText(text);
-    if (parsed && parsed.streetAddress) return parsed;
-  }
-
-  return null;
-}
-
-/**
- * Parse address from text using various patterns
- */
-function parseAddressText(text) {
-  if (!text) return null;
-
-  // Canadian postal code pattern: A1A 1A1
-  const canadianPostalMatch = text.match(/([A-Z]\d[A-Z])\s*(\d[A-Z]\d)/i);
-
-  // US ZIP code pattern: 12345 or 12345-6789
-  const usZipMatch = text.match(/\b(\d{5})(?:-\d{4})?\b/);
-
-  // Street address patterns
-  const streetPatterns = [
-    /(\d+[\s\-]?\w*\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct|Place|Pl|Circle|Cir|Highway|Hwy|Parkway|Pkwy)[.,]?)/i,
-    /(\d+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct|Place|Pl|Circle|Cir|Highway|Hwy|Parkway|Pkwy))/i
-  ];
-
-  let streetAddress = '';
-  for (const pattern of streetPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      streetAddress = match[1].trim().replace(/[,.]$/, '');
-      break;
-    }
-  }
-
-  // Canadian provinces
-  const canadianProvinces = {
-    'ON': 'Ontario', 'QC': 'Quebec', 'BC': 'British Columbia', 'AB': 'Alberta',
-    'MB': 'Manitoba', 'SK': 'Saskatchewan', 'NS': 'Nova Scotia', 'NB': 'New Brunswick',
-    'NL': 'Newfoundland', 'PE': 'Prince Edward Island', 'NT': 'Northwest Territories',
-    'YT': 'Yukon', 'NU': 'Nunavut'
-  };
-
-  // US states (abbreviated)
-  const usStates = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
-    'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC',
-    'ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC'];
-
-  // Ontario cities (common for HVAC businesses)
-  const ontarioCities = ['Hamilton', 'Toronto', 'Ottawa', 'Mississauga', 'Brampton', 'Burlington',
-    'Oakville', 'Stoney Creek', 'Ancaster', 'Dundas', 'Waterdown', 'Grimsby', 'St. Catharines',
-    'St Catharines', 'Niagara', 'London', 'Kitchener', 'Waterloo', 'Cambridge', 'Guelph',
-    'Binbrook', 'Caledonia', 'Brantford', 'Milton', 'Georgetown'];
-
-  let addressLocality = '';
-  let addressRegion = '';
-  let postalCode = '';
-  let addressCountry = '';
-
-  // Extract postal/zip code
-  if (canadianPostalMatch) {
-    postalCode = `${canadianPostalMatch[1].toUpperCase()} ${canadianPostalMatch[2].toUpperCase()}`;
-    addressCountry = 'CA';
-  } else if (usZipMatch) {
-    postalCode = usZipMatch[0];
-    addressCountry = 'US';
-  }
-
-  // Look for province/state
-  for (const [abbr, full] of Object.entries(canadianProvinces)) {
-    const pattern = new RegExp(`\\b(${abbr}|${full})\\b`, 'i');
-    if (pattern.test(text)) {
-      addressRegion = abbr;
-      addressCountry = 'CA';
-      break;
-    }
-  }
-
-  if (!addressRegion) {
-    for (const state of usStates) {
-      const pattern = new RegExp(`\\b${state}\\b`);
-      if (pattern.test(text)) {
-        addressRegion = state;
-        if (!addressCountry) addressCountry = 'US';
-        break;
-      }
-    }
-  }
-
-  // Look for city
-  for (const city of ontarioCities) {
-    const pattern = new RegExp(`\\b${city.replace('.', '\\.')}\\b`, 'i');
-    if (pattern.test(text)) {
-      addressLocality = city;
-      if (!addressRegion) addressRegion = 'ON';
-      if (!addressCountry) addressCountry = 'CA';
-      break;
-    }
-  }
-
-  // Try to extract city from comma-separated parts if not found
-  if (!addressLocality && (streetAddress || postalCode)) {
-    const parts = text.split(/[,\n]+/).map(p => p.trim()).filter(p => p && p.length > 2 && p.length < 50);
-    for (const part of parts) {
-      // Skip if it looks like a street, postal code, or phone
-      if (part.match(/^\d+\s/) || part.match(/^[A-Z]\d[A-Z]/i) || part.match(/^\d{5}/) || part.match(/\d{3}.*\d{4}/)) {
-        continue;
-      }
-      // Likely a city name
-      if (part.match(/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?$/)) {
-        addressLocality = part;
-        break;
-      }
-    }
-  }
-
-  // Only return if we found something useful
-  if (streetAddress || addressLocality || postalCode) {
-    return {
-      streetAddress: streetAddress || undefined,
-      addressLocality: addressLocality || undefined,
-      addressRegion: addressRegion || undefined,
-      postalCode: postalCode || undefined,
-      addressCountry: addressCountry || 'CA'
-    };
-  }
-
-  return null;
-}
-
-/**
- * Detect country from postal code, state, or city
- */
-function detectCountryFromData(postalCode, state, city) {
-  // Canadian postal code format: A1A 1A1 or A1A1A1
-  if (postalCode && /^[A-Z]\d[A-Z]\s?\d[A-Z]\d$/i.test(postalCode)) {
-    return 'CA';
-  }
-
-  // US ZIP code format: 12345 or 12345-6789
-  if (postalCode && /^\d{5}(-\d{4})?$/.test(postalCode)) {
-    return 'US';
-  }
-
-  // Canadian provinces
-  const canadianProvinces = ['ON', 'QC', 'BC', 'AB', 'MB', 'SK', 'NS', 'NB', 'NL', 'PE', 'NT', 'YT', 'NU',
-    'Ontario', 'Quebec', 'British Columbia', 'Alberta', 'Manitoba', 'Saskatchewan'];
-  if (state && canadianProvinces.some(p => p.toLowerCase() === state.toLowerCase())) {
-    return 'CA';
-  }
-
-  // Ontario cities
-  const ontarioCities = ['Hamilton', 'Toronto', 'Ottawa', 'Mississauga', 'Burlington', 'Oakville',
-    'Stoney Creek', 'Ancaster', 'Dundas', 'St. Catharines', 'St Catharines'];
-  if (city && ontarioCities.some(c => c.toLowerCase() === city.toLowerCase())) {
-    return 'CA';
-  }
-
-  return 'US';
-}
-
-/**
- * Extract social profile URLs
- */
-function extractSocialProfiles($) {
-  const profiles = [];
-  const socialPatterns = [
-    { pattern: /facebook\.com/i, name: 'Facebook' },
-    { pattern: /twitter\.com|x\.com/i, name: 'Twitter' },
-    { pattern: /instagram\.com/i, name: 'Instagram' },
-    { pattern: /linkedin\.com/i, name: 'LinkedIn' },
-    { pattern: /youtube\.com/i, name: 'YouTube' },
-    { pattern: /yelp\.com/i, name: 'Yelp' },
-    { pattern: /google\.com\/maps|goo\.gl\/maps/i, name: 'Google' },
-    { pattern: /nextdoor\.com/i, name: 'Nextdoor' },
-    { pattern: /bbb\.org/i, name: 'BBB' },
-    { pattern: /angi\.com|angieslist\.com/i, name: 'Angi' },
-    { pattern: /homeadvisor\.com/i, name: 'HomeAdvisor' }
-  ];
-
-  $('a[href*="facebook.com"], a[href*="twitter.com"], a[href*="x.com"], a[href*="instagram.com"], a[href*="linkedin.com"], a[href*="youtube.com"], a[href*="yelp.com"]').each((_, el) => {
-    const href = $(el).attr('href');
-    if (href && !profiles.includes(href)) {
-      profiles.push(href);
-    }
-  });
-
-  return profiles;
-}
-
-/**
- * Extract email from page
- */
-function extractEmail($) {
-  // Check mailto links
-  const mailtoLink = $('a[href^="mailto:"]').first().attr('href');
-  if (mailtoLink) {
-    return mailtoLink.replace('mailto:', '').split('?')[0];
-  }
-
-  // Check meta tags
-  const metaEmail = $('meta[name="email"]').attr('content');
-  if (metaEmail) return metaEmail;
-
-  // Look for email pattern in text
-  const bodyText = $('body').text();
-  const emailMatch = bodyText.match(/[\w.-]+@[\w.-]+\.\w{2,}/);
-  if (emailMatch) {
-    return emailMatch[0];
-  }
-
-  return '';
-}
-
-/**
- * Detect business type from page content
- */
-function detectBusinessType($) {
-  const bodyText = $('body').text().toLowerCase();
-  const title = $('title').text().toLowerCase();
-  const combinedText = title + ' ' + bodyText;
-
-  const businessPatterns = [
-    { pattern: /hvac|heating.*cooling|air\s*condition|furnace|heat\s*pump/i, type: 'HVACBusiness' },
-    { pattern: /plumb(er|ing)/i, type: 'Plumber' },
-    { pattern: /electric(al|ian)/i, type: 'Electrician' },
-    { pattern: /roof(er|ing)/i, type: 'RoofingContractor' },
-    { pattern: /general\s*contract/i, type: 'GeneralContractor' },
-    { pattern: /home\s*(service|repair|improvement)/i, type: 'HomeAndConstructionBusiness' },
-    { pattern: /pest\s*control/i, type: 'ProfessionalService' },
-    { pattern: /landscap/i, type: 'LandscapingBusiness' },
-    { pattern: /clean(ing|er)/i, type: 'ProfessionalService' }
-  ];
-
-  for (const { pattern, type } of businessPatterns) {
-    if (pattern.test(combinedText)) {
-      return type;
-    }
-  }
-
-  return 'LocalBusiness';
-}
-
-/**
- * Fetch a URL and return structured page content for AI extraction.
- * Includes HTML metadata (meta tags, image URLs, link hrefs, JSON-LD)
- * plus prioritized text from header/footer/contact sections.
- */
-async function fetchPageText(url, helperConfig) {
-  const html = await fetchHtml(url, helperConfig);
-  const $ = cheerio.load(html);
-
-  const urlObj = new URL(url);
-  const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-
-  // Helper to resolve relative URLs
-  function absUrl(href) {
-    if (!href) return '';
-    if (href.startsWith('http')) return href;
-    try { return new URL(href, baseUrl).href; } catch { return href; }
-  }
-
-  // --- 1. Extract HTML metadata that's only in attributes ---
-  const meta = [];
-
-  // OG & meta tags
-  $('meta[property^="og:"], meta[name="description"], meta[name="author"], meta[property="business:contact_data:phone_number"]').each((_, el) => {
-    const prop = $(el).attr('property') || $(el).attr('name');
-    const content = $(el).attr('content');
-    if (prop && content) meta.push(`${prop}: ${content}`);
-  });
-
-  // Logo images (deduplicated)
-  const logoSrcs = new Set();
-  $('img[class*="logo"], img[alt*="logo" i], .logo img, .site-logo img, .custom-logo, header img').each((_, el) => {
-    const src = absUrl($(el).attr('src'));
-    if (src) logoSrcs.add(src);
-  });
-  logoSrcs.forEach(src => meta.push(`Logo image URL: ${src}`));
-
-  // Phone links
-  $('a[href^="tel:"]').each((_, el) => {
-    meta.push(`Phone: ${$(el).attr('href').replace('tel:', '')}`);
-  });
-
-  // Email links
-  $('a[href^="mailto:"]').each((_, el) => {
-    meta.push(`Email: ${$(el).attr('href').replace('mailto:', '').split('?')[0]}`);
-  });
-
-  // Social & directory links (deduplicated)
-  const socialHrefs = new Set();
-  $('a[href*="facebook.com"], a[href*="twitter.com"], a[href*="x.com"], a[href*="instagram.com"], a[href*="linkedin.com"], a[href*="youtube.com"], a[href*="yelp.com"], a[href*="google.com/maps"], a[href*="goo.gl/maps"], a[href*="nextdoor.com"], a[href*="bbb.org"], a[href*="angi.com"], a[href*="homeadvisor.com"]').each((_, el) => {
-    const href = $(el).attr('href');
-    if (href) socialHrefs.add(href);
-  });
-  socialHrefs.forEach(href => meta.push(`Social/directory link: ${href}`));
-
-  // Existing JSON-LD schemas (great source of structured org info)
-  $('script[type="application/ld+json"]').each((_, el) => {
-    try {
-      const schema = JSON.parse($(el).html());
-      meta.push(`JSON-LD schema: ${JSON.stringify(schema).substring(0, 1500)}`);
-    } catch { /* skip invalid */ }
-  });
-
-  // --- 2. Extract text from key sections (header, footer, contact) ---
-  $('script, style, noscript, svg, iframe').remove();
-
-  const headerText = $('header, .header, #header').text().replace(/\s+/g, ' ').trim();
-  const footerText = $('footer, .footer, #footer').text().replace(/\s+/g, ' ').trim();
-  const contactText = $('[class*="contact"], [id*="contact"], address, [class*="address"], [itemtype*="PostalAddress"], [itemtype*="LocalBusiness"], [itemtype*="Organization"]')
-    .text().replace(/\s+/g, ' ').trim();
-  const bodyText = $('body').text().replace(/\s+/g, ' ').trim();
-
-  // --- 3. Assemble with budget ---
-  const sections = [];
-  if (meta.length) sections.push('=== HTML METADATA ===\n' + meta.join('\n'));
-  if (headerText) sections.push('=== HEADER ===\n' + headerText.substring(0, 500));
-  if (footerText) sections.push('=== FOOTER ===\n' + footerText.substring(0, 1000));
-  if (contactText) sections.push('=== CONTACT/ADDRESS SECTIONS ===\n' + contactText.substring(0, 800));
-
-  let result = sections.join('\n\n');
-  // Fill remaining budget with general body text
-  const remaining = 8000 - result.length;
-  if (remaining > 200) {
-    result += '\n\n=== PAGE TEXT ===\n' + bodyText.substring(0, remaining - 50);
-  }
-
-  return result.substring(0, 8000);
-}
 
 module.exports = {
-  scrape,
-  scrapeOrgInfo,
-  fetchPageText
+  scrape
 };

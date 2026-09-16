@@ -1,8 +1,8 @@
 <%- include('partials/header') %>
 
 <div class="workspace-toolbar">
-  <h2 id="workflow-location" aria-live="polite">Sites</h2>
-  <div class="summary-actions"><button id="open-ai-settings" class="btn btn-secondary">AI Settings</button><button class="btn btn-primary" id="add-site">Add site</button></div>
+  <h2>Sites</h2>
+  <div class="summary-actions"><a class="btn btn-secondary" href="/api/workspaces/connector" download>Download plugin</a><button id="open-ai-settings" class="btn btn-secondary">AI Settings</button><button class="btn btn-primary" id="add-site">Add site</button></div>
 </div>
 <div id="workspace-alert" class="workspace-alert" role="status" hidden></div>
 <p id="workflow-guide" class="workspace-guide" role="status">Add your site and configure AI Settings to begin.</p>
@@ -16,8 +16,11 @@
   <div class="workspace-main">
     <section id="empty-state" class="card empty-state">
       <h3>Add your first site</h3>
-      <p>Connect WordPress to start working with its pages.</p>
-      <button class="btn btn-primary" data-action="new-site">Connect WordPress</button>
+      <p>Install the Workspace Connector plugin on WordPress, then connect it here.</p>
+      <div class="summary-actions" style="justify-content:center">
+        <a class="btn btn-secondary" href="/api/workspaces/connector" download>Download plugin</a>
+        <button class="btn btn-primary" data-action="new-site">Connect WordPress</button>
+      </div>
     </section>
 
     <section id="site-panel" hidden>
@@ -30,24 +33,50 @@
         </div>
       </div>
 
-      <div class="step-grid workspace-step-grid">
-        <section class="card step-card" data-workspace-panel="sites">
-          <h3>Find pages</h3>
-          <p>Fetch published content from the selected site.</p>
-          <label for="page-filter">Content to include</label>
-          <select id="page-filter"><option value="all">All published content</option><option value="pages">Pages only</option><option value="posts">Posts only</option></select>
-          <details class="workspace-options"><summary>Choose a sitemap or specific URLs</summary>
-          <label for="sitemap-url">Sitemap URL <small>(optional)</small></label>
-          <input id="sitemap-url" type="url" placeholder="https://example.com/sitemap_index.xml">
-          <label for="manual-urls">Specific page URLs <small>(optional, one per line)</small></label>
-          <textarea id="manual-urls" rows="3" placeholder="https://example.com/about/"></textarea>
-          </details>
-          <button class="btn btn-primary" id="start-crawl">Crawl site</button>
-        </section>
+      <nav class="wizard-steps" aria-label="Workflow steps">
+        <button type="button" class="wizard-step" data-step="pages"><span class="wizard-step-number">1</span><span class="wizard-step-label">Pages</span></button>
+        <button type="button" class="wizard-step" data-step="action"><span class="wizard-step-number">2</span><span class="wizard-step-label">Action</span></button>
+        <button type="button" class="wizard-step" data-step="review"><span class="wizard-step-number">3</span><span class="wizard-step-label">Review</span></button>
+        <button type="button" class="wizard-step" data-step="apply"><span class="wizard-step-number">4</span><span class="wizard-step-label">Apply</span></button>
+      </nav>
 
-        <section class="card step-card" data-workspace-panel="generate">
+      <section class="card step-card" data-wizard-step="pages">
+        <h3>Select pages</h3>
+        <p>Fetch published content from this site, then choose which pages to work with below.</p>
+        <label for="page-filter">Content to include</label>
+        <select id="page-filter"><option value="all">All published content</option><option value="pages">Pages only</option><option value="posts">Posts only</option></select>
+        <details class="workspace-options"><summary>Choose a sitemap or specific URLs</summary>
+        <label for="sitemap-url">Sitemap URL <small>(optional)</small></label>
+        <input id="sitemap-url" type="url" placeholder="https://example.com/sitemap_index.xml">
+        <label for="manual-urls">Specific page URLs <small>(optional, one per line)</small></label>
+        <textarea id="manual-urls" rows="3" placeholder="https://example.com/about/"></textarea>
+        </details>
+        <button class="btn btn-primary" id="start-crawl">Crawl site</button>
+        <p class="muted selection-hint"></p>
+        <div class="summary-actions">
+          <button class="btn btn-primary" id="pages-continue" disabled>Continue →</button>
+        </div>
+      </section>
+
+      <section class="card step-card" data-wizard-step="action" hidden>
+        <h3>What do you want to do?</h3>
+        <p class="muted selection-hint"></p>
+        <div class="action-choice">
+          <button type="button" class="action-card" id="choose-create">
+            <strong>Create new schema</strong>
+            <span>AI generates JSON-LD for the selected pages, then you review and publish it.</span>
+          </button>
+          <button type="button" class="action-card" id="choose-delete">
+            <strong>Delete existing schema</strong>
+            <span>Remove app-published schema from the selected pages (reversible).</span>
+          </button>
+        </div>
+        <div class="summary-actions"><button type="button" class="btn btn-secondary" id="action-back">← Back</button></div>
+      </section>
+
+      <section class="card step-card" data-wizard-step="review" hidden>
+        <div id="review-create-panel">
           <h3>Generate schema</h3>
-          <p>Select pages below, then create schema from their content.</p>
           <p class="muted">AI is always used. There is no basic-generation fallback.</p>
           <div id="ai-fields">
             <label for="ai-provider">Provider</label><select id="ai-provider"><option value="openai">OpenAI</option><option value="gemini">Gemini</option></select>
@@ -56,35 +85,53 @@
             <label id="ai-model-custom" hidden>Custom model ID<input id="ai-model" placeholder="Exact model ID for this provider"></label>
             <details class="workspace-options"><summary>Use a different API key for this run</summary><label for="ai-key">API key <small>(not saved)</small></label><input id="ai-key" type="password" autocomplete="off" placeholder="Use saved key from AI Settings"></details>
           </div>
-          <button class="btn btn-primary" id="generate-run" disabled>Generate AI schema → Review</button>
-        </section>
-
-        <section class="card step-card" data-workspace-panel="results">
-          <h3>Publish schema</h3>
-          <p>Review selected pages before publishing. Page content stays unchanged.</p>
-          <label for="schema-policy">Existing schema</label>
-          <select id="schema-policy"><option value="replace-existing">Replace existing Rank Math schema with reviewed AI schema</option><option value="remove-existing">Remove schema from this page (reversible)</option><option value="keep">Keep existing — skip pages that already have schema</option><option value="replace-managed">Replace only the app's previous schema</option><option value="review">Advanced: keep Rank Math output and add app schema</option></select>
+          <button class="btn btn-primary" id="generate-run" disabled>Generate AI schema</button>
+        </div>
+        <div id="review-delete-panel" hidden>
+          <h3>Confirm removal</h3>
+          <p>Confirm the pages below, then preview removal. Nothing is written to WordPress until you apply on the next step.</p>
+        </div>
+        <div id="schema-policy-group">
+          <label for="schema-policy">If a page already has schema</label>
+          <select id="schema-policy">
+            <option value="replace-existing">Replace it with the new AI schema</option>
+            <option value="keep">Keep existing — skip pages that already have schema</option>
+            <option value="replace-managed">Replace only the app's previous schema</option>
+            <option value="remove-existing" hidden>Remove schema from this page</option>
+            <option value="review">Advanced: keep Rank Math output and add app schema</option>
+          </select>
           <p class="muted">Replace/remove requires Connector 1.2+. It suppresses Rank Math output on selected pages, preserving its underlying settings for Undo. Other plugins' schema is not removed.</p>
-          <label class="toggle-row"><input id="acknowledge-conflicts" type="checkbox">I reviewed the before/after and approve the selected replace, remove, or keep action.</label>
-          <div class="summary-actions">
-          <button class="btn btn-secondary" id="preview-publish" disabled>1. Preview changes</button>
-          <button class="btn btn-primary" id="publish-run" disabled>2. Apply reviewed changes</button>
+        </div>
+        <p class="muted selection-hint"></p>
+        <div class="summary-actions">
+          <button type="button" class="btn btn-secondary" id="review-back">← Back</button>
+          <button class="btn btn-secondary" id="preview-publish" disabled>Preview changes</button>
+          <button class="btn btn-primary" id="review-continue" disabled>Continue to Apply →</button>
+        </div>
+      </section>
+
+      <section class="card step-card" data-wizard-step="apply" hidden>
+        <h3>Apply changes</h3>
+        <p class="muted">Open Review on each page below to check the before/after, then approve to write to WordPress.</p>
+        <label class="toggle-row"><input id="acknowledge-conflicts" type="checkbox">I reviewed the before/after and approve this action.</label>
+        <p class="muted selection-hint"></p>
+        <div class="summary-actions">
+          <button type="button" class="btn btn-secondary" id="apply-back">← Back</button>
+          <button class="btn btn-primary" id="publish-run" disabled>Apply reviewed changes</button>
           <button class="btn btn-secondary" id="verify-run" disabled>Verify live pages</button>
           <button class="btn btn-secondary" id="rollback-run" disabled>Undo last change</button>
-          </div>
-        </section>
-      </div>
+        </div>
+      </section>
 
       <section class="card run-card">
         <div class="section-heading"><h3 id="run-title">No crawl yet</h3><div id="run-status" class="status-badge">Ready</div></div>
+        <p id="selection-summary" class="muted" role="status"></p>
         <div id="run-summary" class="metric-row"></div>
         <p id="run-message" role="status"></p>
         <div id="pages-table" class="pages-table"><p class="muted">Discover pages to begin.</p></div>
       </section>
 
-      <div class="summary-actions" style="margin:1rem 0"><button id="workflow-back" class="btn btn-secondary">Back</button><button id="workflow-next" class="btn btn-primary">Continue</button></div>
-
-      <section class="card history-card" data-workspace-panel="results">
+      <section class="card history-card">
         <div class="section-heading"><h3>Run history</h3></div>
         <div id="run-history"><p class="muted">No recorded runs.</p></div>
       </section>
@@ -101,12 +148,10 @@
       <label>WordPress URL<input id="site-url" type="url" required placeholder="https://example.com"></label>
     </div>
     <p>Create an Application Password under WordPress → Users → Profile. Each site has its own credentials and field mapping. No database access or table prefix is needed.</p>
-    <label>Connection method<select id="connection-type"><option value="application-password">WordPress Application Password</option><option value="helper">Legacy helper (advanced generator only)</option></select></label>
-    <div id="app-password-fields" class="form-grid">
+    <div class="form-grid">
       <label>WordPress username<input id="wp-username" autocomplete="username"></label>
       <label>Application password<input id="wp-password" type="password" autocomplete="new-password" placeholder="Leave blank to keep existing"></label>
     </div>
-    <div id="helper-fields" hidden><label>Helper secret token<input id="helper-token" type="password" autocomplete="off" placeholder="Leave blank to keep existing"></label></div>
     <label>Schema integration<select id="integration"><option value="connector">Rank Math integration — Workspace Connector</option><option value="rest-meta">Advanced: direct REST metadata (no Rank Math replacement/removal)</option></select></label>
     <div id="rest-mapping-fields">
       <p class="muted">The field must be registered with show_in_rest and rendered as JSON-LD by your theme/plugin. Saving metadata alone does not output schema. Preview checks the selected target without writing.</p>
@@ -114,13 +159,8 @@
       <details><summary>Different fields for different post types</summary><label>Overrides as JSON (WordPress type names, not collection names)<textarea id="rest-overrides" rows="4" placeholder='{"product":{"key":"product_jsonld","encoding":"object"}}'></textarea></label></details>
     </div>
     <p id="connector-help" hidden><a href="/api/workspaces/connector" download>Download Connector 1.2 ZIP</a>. Upload or update under Plugins → Add New → Upload Plugin and activate. Required for reversible Rank Math replacement/removal. No table-prefix configuration.</p>
-    <details>
-      <summary>Legacy field mapping (advanced generator only)</summary>
-      <p class="muted">Use the REST collection names and metadata keys registered by this WordPress site.</p>
-      <label>Post type endpoints<input id="post-types" value="pages, posts" placeholder="pages, posts, products"></label>
-      <div class="form-grid"><label>Schema meta prefix<input id="schema-prefix" value="rank_math_schema_"></label><label>Rich snippet key<input id="rich-key" value="rank_math_rich_snippet"></label></div>
-      <label class="toggle-row"><input type="checkbox" id="content-fallback"><span>Allow fallback injection into post content</span></label>
-    </details>
+    <label>Default schema image <small>(optional)</small><input id="org-image" type="url" placeholder="https://example.com/brand-photo.jpg"></label>
+    <p class="muted">Used only on pages where no suitable content photo was found on the page itself (decorative dividers, spacers and icons are automatically skipped, never chosen). Pages with their own image keep it — this never overrides a good page-specific photo.</p>
     <div class="dialog-actions"><button type="button" class="btn btn-danger dialog-delete" id="delete-site" hidden>Delete site</button><button type="button" class="btn btn-secondary" id="cancel-dialog">Cancel</button><button type="submit" class="btn btn-primary">Save site</button></div>
   </form>
 </dialog>
@@ -163,6 +203,6 @@
 <script src="/js/workspace.js"></script>
     </div>
   </main>
-  <footer class="footer"><div class="container"><p>Schema Workspace · One site, one run, from crawl to publication</p><details><summary>Legacy tools and browser-local records</summary><p>These older tools are separate from saved workspace runs. Existing records have not been deleted or migrated.</p><a href="/legacy/generator">Legacy generator</a> · <a href="/legacy/results">Legacy browser results</a></details></div></footer>
+  <footer class="footer"><div class="container"><p>Schema Workspace · One site, one run, from crawl to publication</p></div></footer>
 </body>
 </html>

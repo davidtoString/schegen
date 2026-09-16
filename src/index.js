@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const authStore = require('./services/authStore');
 
 // Fatal errors should terminate the process so Docker can restart it cleanly.
 process.on('uncaughtException', (err) => {
@@ -14,7 +15,6 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const indexRoutes = require('./routes/index');
-const apiRoutes = require('./routes/api');
 const workspaceRoutes = require('./routes/workspaces');
 
 const app = express();
@@ -46,7 +46,6 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Routes
 app.use('/', indexRoutes);
-app.use('/api', apiRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok', version: require('../package.json').version }));
@@ -57,10 +56,27 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'An internal error occurred. Check the server logs.' });
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`Schema Generator running at http://localhost:${PORT}`);
-});
+// One-time bootstrap: if no administrator exists yet and DASHBOARD_USER/DASHBOARD_PASSWORD
+// are set, create the account from them. Has no effect once an administrator is configured —
+// reset it with scripts/admin-user.js instead of editing .env afterward.
+async function bootstrapAdminFromEnv() {
+  if (authStore.configured()) return;
+  const { DASHBOARD_USER, DASHBOARD_PASSWORD } = process.env;
+  if (!DASHBOARD_USER || !DASHBOARD_PASSWORD) return;
+  try {
+    await authStore.setUser(DASHBOARD_USER, DASHBOARD_PASSWORD);
+    console.log(`Administrator account bootstrapped from DASHBOARD_USER (username: ${DASHBOARD_USER}). Change it anytime with scripts/admin-user.js.`);
+  } catch (error) {
+    console.error(`Could not bootstrap administrator from DASHBOARD_USER/DASHBOARD_PASSWORD: ${error.message}`);
+  }
+}
 
-// Increase server timeout for long-running scrape operations (5 minutes)
-server.timeout = 300000;
-server.keepAliveTimeout = 300000;
+bootstrapAdminFromEnv().then(() => {
+  const server = app.listen(PORT, () => {
+    console.log(`Schema Generator running at http://localhost:${PORT}`);
+  });
+
+  // Increase server timeout for long-running scrape operations (5 minutes)
+  server.timeout = 300000;
+  server.keepAliveTimeout = 300000;
+});

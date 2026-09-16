@@ -68,6 +68,16 @@ function normalizeUrl(value) {
   return parsed.toString().replace(/\/$/, '');
 }
 
+function normalizeOrganization(organization = {}) {
+  const image = String(organization.image || '').trim();
+  if (image) {
+    let parsed;
+    try { parsed = new URL(image); } catch { throw new Error('Default schema image must be a full https:// URL.'); }
+    if (parsed.protocol !== 'https:') throw new Error('Default schema image must be a full https:// URL.');
+  }
+  return { image };
+}
+
 function defaultMapping(mapping = {}) {
   const integration = mapping.integration || 'connector';
   if (!['connector', 'rest-meta'].includes(integration)) throw new Error('Unknown WordPress integration.');
@@ -81,12 +91,7 @@ function defaultMapping(mapping = {}) {
     integration,
     restMetaKey: String(mapping.restMetaKey || '').trim(),
     restEncoding: mapping.restEncoding || 'json-string',
-    restOverrides: overrides,
-    postTypes: Array.isArray(mapping.postTypes) && mapping.postTypes.length ? mapping.postTypes : ['pages', 'posts'],
-    schemaMetaPrefix: mapping.schemaMetaPrefix || 'rank_math_schema_',
-    richSnippetKey: mapping.richSnippetKey || 'rank_math_rich_snippet',
-    fallbackToContent: Boolean(mapping.fallbackToContent),
-    customFields: mapping.customFields && typeof mapping.customFields === 'object' ? mapping.customFields : {}
+    restOverrides: overrides
   };
 }
 
@@ -94,7 +99,6 @@ function publicSite(site) {
   const copy = JSON.parse(JSON.stringify(site));
   if (copy.connection) {
     copy.connection.hasAppPassword = Boolean(copy.connection.appPassword);
-    copy.connection.hasSecretToken = Boolean(copy.connection.secretToken);
     delete copy.connection.appPassword;
     delete copy.connection.secretToken;
   }
@@ -105,19 +109,17 @@ function createSite(input) {
   if (!input.name || !input.url) throw new Error('Site name and URL are required');
   const data = read();
   const now = new Date().toISOString();
-  const type = input.connection?.type || 'application-password';
   const site = {
     id: crypto.randomUUID(),
     name: String(input.name).trim(),
     url: normalizeUrl(input.url),
     connection: {
-      type,
+      type: 'application-password',
       username: String(input.connection?.username || '').trim(),
-      appPassword: encrypt(input.connection?.appPassword),
-      secretToken: encrypt(input.connection?.secretToken)
+      appPassword: encrypt(input.connection?.appPassword)
     },
     mapping: defaultMapping(input.mapping),
-    organization: input.organization || {},
+    organization: normalizeOrganization(input.organization),
     createdAt: now,
     updatedAt: now,
     lastConnectionStatus: 'untested'
@@ -137,14 +139,12 @@ function updateSite(id, input) {
     ...previous,
     name: input.name ? String(input.name).trim() : previous.name,
     url: input.url ? normalizeUrl(input.url) : previous.url,
-    organization: input.organization === undefined ? previous.organization : input.organization,
+    organization: input.organization === undefined ? previous.organization : normalizeOrganization(input.organization),
     mapping: input.mapping ? defaultMapping({ ...previous.mapping, ...input.mapping }) : previous.mapping,
     connection: {
-      ...previous.connection,
-      type: connection.type || previous.connection.type,
+      type: 'application-password',
       username: connection.username === undefined ? previous.connection.username : String(connection.username).trim(),
-      appPassword: connection.appPassword ? encrypt(connection.appPassword) : previous.connection.appPassword,
-      secretToken: connection.secretToken ? encrypt(connection.secretToken) : previous.connection.secretToken
+      appPassword: connection.appPassword ? encrypt(connection.appPassword) : previous.connection.appPassword
     },
     updatedAt: new Date().toISOString()
   };
@@ -160,8 +160,7 @@ function getSite(id, includeSecrets = false) {
     ...site,
     connection: {
       ...site.connection,
-      appPassword: decrypt(site.connection.appPassword),
-      secretToken: decrypt(site.connection.secretToken)
+      appPassword: decrypt(site.connection.appPassword)
     }
   };
 }
@@ -197,7 +196,7 @@ function createRun(siteId, input = {}) {
   const run = {
     id: crypto.randomUUID(), siteId, status: 'discovering', source: input.source || 'sitemap',
     sitemapUrl: input.sitemapUrl || '', postTypeFilter: input.postTypeFilter || 'all',
-    pages: [], createdAt: now, updatedAt: now, summary: { discovered: 0, generated: 0, failed: 0, published: 0 }
+    pages: [], createdAt: now, updatedAt: now, summary: { discovered: 0, generated: 0, failed: 0, published: 0, removed: 0 }
   };
   data.runs.unshift(run);
   write(data);

@@ -1,28 +1,9 @@
 const express = require('express');
 const router = express.Router();
 
-// Dashboard
-for (const [url, section] of [['/', 'sites'], ['/generator', 'generate'], ['/results', 'results']]) {
-  router.get(url, (req, res) => res.render('workspace', { title: 'Schema Workspace', section }));
-}
-
-// Original advanced generator remains available for manual and database workflows.
-router.get('/legacy/generator', (req, res) => {
-  res.render('index', {
-    title: 'Schema Generator',
-    defaultOrg: {
-      name: process.env.DEFAULT_ORG_NAME || '',
-      url: process.env.DEFAULT_ORG_URL || '',
-      logo: process.env.DEFAULT_ORG_LOGO || ''
-    }
-  });
-});
-
-// Results page
-router.get('/legacy/results', (req, res) => {
-  res.render('results', {
-    title: 'Schema Results'
-  });
-});
+// Dashboard: a single-page guided wizard (pages -> action -> review -> apply).
+router.get('/', (req, res) => res.render('workspace', { title: 'Schema Workspace' }));
+// Former tab URLs redirect to the single-page wizard, preserving query params (site/run).
+router.get(['/generator', '/results'], (req, res) => res.redirect(`/${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
 
 module.exports = router;

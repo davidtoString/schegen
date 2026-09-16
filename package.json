@@ -7,9 +7,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node --test \"tests/*.test.js\"",
-    "test:wordpress": "node tests/integration/run.js",
-    "test:db": "node scripts/test-db-connection.js",
-    "test:db:help": "node scripts/test-db-connection.js --help"
+    "test:wordpress": "node tests/integration/run.js"
   },
   "keywords": [
     "wordpress",
@@ -41,8 +39,7 @@
     "dotenv": "^16.3.1",
     "ejs": "^3.1.9",
     "express": "^4.22.2",
-    "fast-xml-parser": "^5.10.1",
-    "mysql2": "^3.16.2"
+    "fast-xml-parser": "^5.10.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

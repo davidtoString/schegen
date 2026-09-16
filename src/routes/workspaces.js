@@ -15,7 +15,7 @@ function fail(message, status = 400) { const error = new Error(message); error.s
 function siteFor(id) { return store.getSite(id, true) || fail('Site not found', 404); }
 function runFor(id) { return store.getRun(id) || fail('Run not found', 404); }
 function clientFor(site) {
-  if (site.connection.type !== 'application-password') fail('Choose WordPress Application Password. Legacy helper access remains in the advanced generator.');
+  if (site.connection.type !== 'application-password') fail('This site was registered with an unsupported connection type. Edit its settings and reconnect with a WordPress Application Password.');
   return connector.create(site);
 }
 function lock(id) { if (busySites.has(id)) fail('This site already has an operation running.', 409); busySites.add(id); }
@@ -23,7 +23,8 @@ function summary(pages) { return {
   discovered: pages.length, crawled: pages.filter(p => p.pageData).length,
   generated: pages.filter(p => p.schema && p.validation?.valid).length,
   failed: pages.filter(p => ['failed', 'invalid', 'publish_failed'].includes(p.status)).length,
-  published: pages.filter(p => p.status === 'published').length
+  published: pages.filter(p => p.status === 'published').length,
+  removed: pages.filter(p => p.status === 'schema_removed').length
 }; }
 function updatePage(id, url, values) {
   return store.updateRun(id, run => {
@@ -111,14 +112,17 @@ async function crawl(id, site, options) {
     pages = pages.slice(0, MAX_PAGES).map(p => ({ ...p, status: 'queued' }));
     if (!pages.length) fail('No public pages found. Supply page URLs or a WordPress sitemap.');
     store.updateRun(id, { status: 'crawling', source, limited, pages, summary: summary(pages) });
-    for (const page of pages) {
-      try {
-        const pageData = await scraper.scrape(page.url);
-        pageData.content = pageData.content || pageData.textContent || '';
-        if (page.postType) pageData.wordpressInfo = { ...pageData.wordpressInfo, postType: page.postType };
-        if (!pageData.title || !pageData.content) fail('No readable page content was found.');
-        updatePage(id, page.url, { status: 'crawled', title: pageData.title, pageData, crawledAt: new Date().toISOString() });
-      } catch (error) { updatePage(id, page.url, { status: 'failed', error: error.message }); }
+    // Schema removal only needs page URLs, not scraped content — skip the fetch/parse pass entirely.
+    if (!options.skipContent) {
+      for (const page of pages) {
+        try {
+          const pageData = await scraper.scrape(page.url);
+          pageData.content = pageData.content || pageData.textContent || '';
+          if (page.postType) pageData.wordpressInfo = { ...pageData.wordpressInfo, postType: page.postType };
+          if (!pageData.title || !pageData.content) fail('No readable page content was found.');
+          updatePage(id, page.url, { status: 'crawled', title: pageData.title, pageData, crawledAt: new Date().toISOString() });
+        } catch (error) { updatePage(id, page.url, { status: 'failed', error: error.message }); }
+      }
     }
     store.updateRun(id, { status: 'ready' });
   } catch (error) { store.updateRun(id, { status: 'failed', error: error.message }); }
@@ -132,6 +136,7 @@ router.post('/runs/:id/generate', route(async (req, res) => {
   if (pages.some(p => !p.pageData)) fail('Crawl selected pages successfully before generating schema.');
   let aiOptions;
   try { aiOptions = store.resolveAIOptions(req.body); } catch (error) { fail(error.message); }
+  const fallbackImage = siteFor(run.siteId).organization?.image || '';
   lock(run.siteId);
   store.updateRun(run.id, { status: 'generating', error: null });
   setImmediate(async () => {
@@ -139,7 +144,9 @@ router.post('/runs/:id/generate', route(async (req, res) => {
       for (const page of pages) {
         updatePage(run.id, page.url, { schema: null, validation: null, existingReview: null, error: null, status: 'generating' });
         try {
-          const schema = await schemas.generateAI(page.pageData, aiOptions);
+          // Only fills a gap left by the crawler; never overrides a page's own detected image.
+          const pageData = fallbackImage && !page.pageData.featuredImage ? { ...page.pageData, featuredImage: fallbackImage } : page.pageData;
+          const schema = await schemas.generateAI(pageData, aiOptions);
           const validation = schemas.validate(schema, page.pageData);
           updatePage(run.id, page.url, { schema, validation, generation: { engine: 'ai', provider: aiOptions.provider, model: aiOptions.model || require('../services/ai').getDefaultModel(aiOptions.provider) }, status: validation.valid ? 'generated' : 'invalid', schemaTypes: schema['@graph']?.flatMap(n => n['@type']) || [], generatedAt: new Date().toISOString() });
         } catch (error) { updatePage(run.id, page.url, { status: 'failed', error: aiOptions?.apiKey ? error.message.split(aiOptions.apiKey).join('[redacted]') : error.message }); }
