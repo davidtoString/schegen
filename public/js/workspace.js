@@ -39,7 +39,7 @@ function guideText(run) {
   switch (state.wizardStep) {
     case 'pages': return 'Crawl the site, then check the pages you want to work with below.';
     case 'action': return 'Choose whether to create new schema or delete existing schema for the selected pages.';
-    case 'review': return state.wizardAction === 'delete' ? 'Confirm the pages below, then preview removal.' : 'Configure AI generation and click Generate — a preview runs automatically once it finishes.';
+    case 'review': return state.wizardAction === 'delete' ? 'Removal was previewed automatically for the pages you selected — open Review on each row, then continue.' : 'Configure AI generation and click Generate — a preview runs automatically once it finishes.';
     case 'apply': return 'Open Review on each page below, approve, then apply. Undo remains available afterward.';
     default: return '';
   }
@@ -78,7 +78,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setWizardStep('action');
   });
   $('choose-create').addEventListener('click', () => { applyWizardAction('create'); setWizardStep('review'); });
-  $('choose-delete').addEventListener('click', () => { applyWizardAction('delete'); setWizardStep('review'); });
+  $('choose-delete').addEventListener('click', async () => {
+    applyWizardAction('delete'); setWizardStep('review');
+    // Pages are already selected from the Pages step; preview removal for them right away
+    // instead of making the user click "Preview changes" as a separate manual gate.
+    await publishRun(true);
+  });
   $('action-back').addEventListener('click', () => setWizardStep('pages'));
   $('review-back').addEventListener('click', () => setWizardStep('action'));
   $('review-continue').addEventListener('click', () => setWizardStep('apply'));
@@ -103,7 +108,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('generate-run').addEventListener('click', generateRun);
   $('preview-publish').addEventListener('click', () => publishRun(true));
   $('publish-run').addEventListener('click', () => publishRun(false));
-  $('schema-policy').addEventListener('change', () => { $('acknowledge-conflicts').checked = false; updatePublishControls(); });
+  $('schema-policy').addEventListener('change', async () => {
+    $('acknowledge-conflicts').checked = false; updatePublishControls();
+    // Changing the policy invalidates the previous preview; re-run it automatically instead
+    // of leaving "Continue to Apply" stuck disabled until a manual re-preview.
+    if (state.activeRun?.pages.some(page => page.schema) && selectedUrls().length) await publishRun(true);
+  });
   $('acknowledge-conflicts').addEventListener('change', updatePublishControls);
   $('rollback-run').addEventListener('click', async () => {
     const urls = selectedUrls();
