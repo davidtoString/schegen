@@ -97,7 +97,6 @@ function create(site) {
       }
     }
   };
-  if (site.mapping?.integration === 'rest-meta') return require('./wordpressRestMeta').create(site, http, client);
   return client;
 }
 module.exports = { create };

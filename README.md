@@ -27,10 +27,7 @@ The page list stays visible at every step, and the step indicator lets you jump 
 
 ## WordPress integration
 
-Two ways to connect a site, chosen per-site in its settings:
-
-- **Workspace Connector** (recommended for Rank Math) — download the plugin from the toolbar, install it on the WordPress site, and activate. It exposes dedicated endpoints for reading/writing schema and reversibly suppressing Rank Math's own output.
-- **Direct REST metadata** — no plugin needed. Point the app at any REST-exposed post-meta field (`show_in_rest: true`); your theme is responsible for rendering it as JSON-LD.
+Every site connects through the **Workspace Connector** plugin: download it from the toolbar, install it on the WordPress site, and activate. It exposes dedicated endpoints for reading/writing schema and reversibly suppressing Rank Math's own output — that reversibility is what makes replace/remove and Undo work.
 
 ## Configuration
 

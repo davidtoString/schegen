@@ -78,23 +78,6 @@ function normalizeOrganization(organization = {}) {
   return { image };
 }
 
-function defaultMapping(mapping = {}) {
-  const integration = mapping.integration || 'connector';
-  if (!['connector', 'rest-meta'].includes(integration)) throw new Error('Unknown WordPress integration.');
-  if (mapping.restEncoding && !['json-string', 'object'].includes(mapping.restEncoding)) throw new Error('Invalid REST metadata encoding.');
-  const overrides = mapping.restOverrides || {};
-  if (typeof overrides !== 'object' || Array.isArray(overrides)) throw new Error('Post-type overrides must be a JSON object.');
-  for (const entry of Object.values(overrides)) {
-    if (!entry || typeof entry.key !== 'string' || !entry.key.trim() || (entry.encoding && !['json-string', 'object'].includes(entry.encoding))) throw new Error('Each post-type override requires a key and an optional json-string or object encoding.');
-  }
-  return {
-    integration,
-    restMetaKey: String(mapping.restMetaKey || '').trim(),
-    restEncoding: mapping.restEncoding || 'json-string',
-    restOverrides: overrides
-  };
-}
-
 function publicSite(site) {
   const copy = JSON.parse(JSON.stringify(site));
   if (copy.connection) {
@@ -118,7 +101,6 @@ function createSite(input) {
       username: String(input.connection?.username || '').trim(),
       appPassword: encrypt(input.connection?.appPassword)
     },
-    mapping: defaultMapping(input.mapping),
     organization: normalizeOrganization(input.organization),
     createdAt: now,
     updatedAt: now,
@@ -140,7 +122,6 @@ function updateSite(id, input) {
     name: input.name ? String(input.name).trim() : previous.name,
     url: input.url ? normalizeUrl(input.url) : previous.url,
     organization: input.organization === undefined ? previous.organization : normalizeOrganization(input.organization),
-    mapping: input.mapping ? defaultMapping({ ...previous.mapping, ...input.mapping }) : previous.mapping,
     connection: {
       type: 'application-password',
       username: connection.username === undefined ? previous.connection.username : String(connection.username).trim(),
@@ -266,7 +247,7 @@ function resolveAIOptions(options = {}) {
 module.exports = {
   aiSettings, saveAISettings, resolveAIOptions,
   createSite, updateSite, getSite, listSites, deleteSite, updateConnectionStatus,
-  createRun, updateRun, getRun, listRuns, defaultMapping
+  createRun, updateRun, getRun, listRuns
 };
 
 // A stopped process cannot resume an in-memory operation. Preserve results and allow a retry.

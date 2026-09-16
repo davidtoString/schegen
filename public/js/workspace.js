@@ -104,7 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
   $('cancel-dialog').addEventListener('click', closeDialog);
   $('site-form').addEventListener('submit', saveSite);
   $('delete-site').addEventListener('click', deleteSite);
-  $('integration').addEventListener('change', toggleConnectionFields);
   $('test-site').addEventListener('click', testSite);
   $('edit-site').addEventListener('click', editSite);
   $('start-crawl').addEventListener('click', discoverPages);
@@ -279,7 +278,6 @@ function openNewSite() {
   $('site-id').value = '';
   $('site-dialog-title').textContent = 'Register a site';
   $('delete-site').hidden = true;
-  toggleConnectionFields();
   $('site-dialog').showModal();
 }
 
@@ -292,39 +290,20 @@ function editSite() {
   $('site-url').value = site.url;
   $('wp-username').value = site.connection.username || '';
   $('wp-password').value = '';
-  $('integration').value = site.mapping.integration || 'connector';
-  $('rest-meta-key').value = site.mapping.restMetaKey || '';
-  $('rest-encoding').value = site.mapping.restEncoding || 'json-string';
-  $('rest-overrides').value = JSON.stringify(site.mapping.restOverrides || {}, null, 2);
   $('org-image').value = site.organization?.image || '';
-  toggleConnectionFields();
   $('site-dialog').showModal();
 }
 
 function closeDialog() { $('site-dialog').close(); }
 
-function toggleConnectionFields() {
-  const direct = $('integration').value === 'rest-meta';
-  $('rest-mapping-fields').hidden = !direct;
-  $('connector-help').hidden = direct;
-}
-
 async function saveSite(event) {
   event.preventDefault();
   const id = $('site-id').value;
-  let overrides;
-  try { overrides = JSON.parse($('rest-overrides').value.trim() || '{}'); }
-  catch { return notify('Post-type overrides must be valid JSON.', 'error'); }
-  if ($('integration').value === 'rest-meta' && !$('rest-meta-key').value.trim() && !Object.keys(overrides || {}).length) return notify('Enter the registered metadata key, or configure post-type overrides.', 'error');
   const payload = {
     name: $('site-name').value, url: $('site-url').value,
     connection: {
       type: 'application-password', username: $('wp-username').value,
       appPassword: $('wp-password').value
-    },
-    mapping: {
-      integration: $('integration').value, restMetaKey: $('rest-meta-key').value.trim(),
-      restEncoding: $('rest-encoding').value, restOverrides: overrides
     },
     organization: { image: $('org-image').value.trim() }
   };

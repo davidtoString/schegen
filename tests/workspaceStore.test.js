@@ -42,21 +42,6 @@ describe('Workspace Store', () => {
     assert.strictEqual(store.getRun(run.id), null);
   });
 
-  test('normalizes REST metadata mappings and defaults to the connector integration', () => {
-    const defaulted = store.createSite({ name: 'Example', url: 'https://example.com' });
-    assert.strictEqual(defaulted.mapping.integration, 'connector');
-    assert.strictEqual(defaulted.mapping.restEncoding, 'json-string');
-
-    const site = store.createSite({
-      name: 'Shop', url: 'https://shop.example.com',
-      mapping: { integration: 'rest-meta', restMetaKey: '_custom_schema_', restEncoding: 'object', restOverrides: { product: { key: 'product_jsonld', encoding: 'object' } } }
-    });
-    assert.strictEqual(site.mapping.integration, 'rest-meta');
-    assert.strictEqual(site.mapping.restMetaKey, '_custom_schema_');
-    assert.strictEqual(site.mapping.restEncoding, 'object');
-    assert.deepStrictEqual(site.mapping.restOverrides, { product: { key: 'product_jsonld', encoding: 'object' } });
-  });
-
   test('validates the optional default schema image', () => {
     const bare = store.createSite({ name: 'Example', url: 'https://example.com' });
     assert.strictEqual(bare.organization.image, '');

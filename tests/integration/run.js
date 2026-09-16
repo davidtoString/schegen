@@ -40,14 +40,12 @@ async function main() {
     for (const [service, prefix] of [['wp-a', 'alpha_'], ['wp-b', 'client_b_42_']]) {
       const setup = JSON.parse(initialize(service));
       assert.equal(setup.prefix, prefix);
-      for (const mode of ['rest-meta', 'connector', 'rankmath']) {
-        const integration = mode === 'rankmath' ? 'connector' : mode;
-        if (integration === 'connector') initialize(service, 'connector');
+      for (const mode of ['connector', 'rankmath']) {
+        initialize(service, 'connector');
         if (mode === 'rankmath') initialize(service, 'rankmath');
         const site = (await request('/sites', {
-          name: `${service}-${integration}`, url: setup.url,
-          connection: { username: setup.username, appPassword: setup.appPassword },
-          mapping: { integration, restMetaKey: setup.key, restEncoding: setup.encoding }
+          name: `${service}-${mode}`, url: setup.url,
+          connection: { username: setup.username, appPassword: setup.appPassword }
         })).site;
         const connection = await request(`/sites/${site.id}/test`, {});
         assert.equal(connection.success, true);
@@ -86,7 +84,7 @@ async function main() {
             assert.ok((await client.inspectPublic(setup.urls[0])).length > 0, 'Rank Math output restored');
           }
         }
-        console.log(`PASS WordPress ${setup.version} | ${prefix} | ${mode} | ${setup.key} (${setup.encoding}) | front page + custom type + rollback`);
+        console.log(`PASS WordPress ${setup.version} | ${prefix} | ${mode} | front page + custom type + rollback`);
       }
     }
     console.log('All six real WordPress workflows passed. No production sites contacted.');

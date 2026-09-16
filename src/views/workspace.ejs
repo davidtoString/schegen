@@ -147,18 +147,12 @@
       <label>Site name<input id="site-name" required placeholder="Acme Heating"></label>
       <label>WordPress URL<input id="site-url" type="url" required placeholder="https://example.com"></label>
     </div>
-    <p>Create an Application Password under WordPress → Users → Profile. Each site has its own credentials and field mapping. No database access or table prefix is needed.</p>
+    <p>Create an Application Password under WordPress → Users → Profile. Each site has its own credentials. No database access or table prefix is needed.</p>
     <div class="form-grid">
       <label>WordPress username<input id="wp-username" autocomplete="username"></label>
       <label>Application password<input id="wp-password" type="password" autocomplete="new-password" placeholder="Leave blank to keep existing"></label>
     </div>
-    <label>Schema integration<select id="integration"><option value="connector">Rank Math integration — Workspace Connector</option><option value="rest-meta">Advanced: direct REST metadata (no Rank Math replacement/removal)</option></select></label>
-    <div id="rest-mapping-fields">
-      <p class="muted">The field must be registered with show_in_rest and rendered as JSON-LD by your theme/plugin. Saving metadata alone does not output schema. Preview checks the selected target without writing.</p>
-      <div class="form-grid"><label>Exact metadata key<input id="rest-meta-key" placeholder="site_schema_jsonld"></label><label>Stored format<select id="rest-encoding"><option value="json-string">JSON string (REST type: string)</option><option value="object">JSON object (REST type: object)</option></select></label></div>
-      <details><summary>Different fields for different post types</summary><label>Overrides as JSON (WordPress type names, not collection names)<textarea id="rest-overrides" rows="4" placeholder='{"product":{"key":"product_jsonld","encoding":"object"}}'></textarea></label></details>
-    </div>
-    <p id="connector-help" hidden><a href="/api/workspaces/connector" download>Download Connector 1.2 ZIP</a>. Upload or update under Plugins → Add New → Upload Plugin and activate. Required for reversible Rank Math replacement/removal. No table-prefix configuration.</p>
+    <p><a href="/api/workspaces/connector" download>Download Connector 1.2 ZIP</a>. Upload or update under Plugins → Add New → Upload Plugin and activate. Required for reversible Rank Math replacement/removal.</p>
     <label>Default schema image <small>(optional)</small><input id="org-image" type="url" placeholder="https://example.com/brand-photo.jpg"></label>
     <p class="muted">Used only on pages where no suitable content photo was found on the page itself (decorative dividers, spacers and icons are automatically skipped, never chosen). Pages with their own image keep it — this never overrides a good page-specific photo.</p>
     <div class="dialog-actions"><button type="button" class="btn btn-danger dialog-delete" id="delete-site" hidden>Delete site</button><button type="button" class="btn btn-secondary" id="cancel-dialog">Cancel</button><button type="submit" class="btn btn-primary">Save site</button></div>

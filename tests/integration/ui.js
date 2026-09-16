@@ -12,7 +12,7 @@ const setup = JSON.parse(execFileSync('docker', args, { encoding: 'utf8' }));
 execFileSync('docker', [...args, 'rankmath']);
 const schemas = require('../../src/services/pageSchema');
 schemas.generateAI = async page => schemas.generate(page);
-require('../../src/services/workspaceStore').createSite({ name: 'Rank Math test site', url: setup.url, connection: { username: setup.username, appPassword: setup.appPassword }, mapping: { integration: 'connector' } });
+require('../../src/services/workspaceStore').createSite({ name: 'Rank Math test site', url: setup.url, connection: { username: setup.username, appPassword: setup.appPassword } });
 const express = require('express');
 const app = express();
 app.use(express.json());
