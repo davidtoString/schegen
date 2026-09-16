@@ -61,6 +61,9 @@ function renderWizard() {
 
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
+  $('open-help').addEventListener('click', () => $('help-dialog').showModal());
+  $('close-help').addEventListener('click', () => $('help-dialog').close());
+  $('close-help-footer').addEventListener('click', () => $('help-dialog').close());
   $('open-ai-settings').addEventListener('click', openAISettings);
   $('close-ai-settings').addEventListener('click', () => $('ai-settings-dialog').close());
   $('ai-settings-dialog').addEventListener('close', () => {

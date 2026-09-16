@@ -21,6 +21,7 @@
           <button class="btn btn-secondary" type="submit">Sign out</button>
         </form>
         <% } %>
+        <button class="btn btn-secondary" id="open-help">Help</button>
         <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode">
           <span class="icon">🌙</span>
           <span class="label">Dark</span>
@@ -28,5 +29,44 @@
       </nav>
     </div>
   </header>
+
+  <dialog id="help-dialog" class="site-dialog">
+    <div style="padding:1.5rem">
+      <div class="dialog-heading">
+        <div><span class="eyebrow">GUIDE</span><h2>How this works</h2></div>
+        <button type="button" class="icon-button" id="close-help">×</button>
+      </div>
+
+      <h3>1. Connect a site</h3>
+      <p>Click <strong>Add site</strong>. Enter the WordPress URL and an Application Password (WordPress → Users → Profile → Application Passwords). Choose an integration:</p>
+      <ul>
+        <li><strong>Workspace Connector</strong> (recommended for Rank Math) — download the plugin from the toolbar, install and activate it on the site, then select this integration. It's what makes replace/remove of existing schema reversible.</li>
+        <li><strong>Direct REST metadata</strong> — no plugin needed. Point at any REST-exposed post-meta field; your theme renders it as JSON-LD.</li>
+      </ul>
+      <p class="muted">Optionally set a <strong>default schema image</strong> in site settings — used only on pages that don't have their own image.</p>
+
+      <h3>2. Save your AI key</h3>
+      <p>Click <strong>AI Settings</strong> and paste your OpenAI or Gemini API key. Schema generation always uses AI — there is no non-AI fallback.</p>
+
+      <h3>3. Work through the wizard</h3>
+      <ul>
+        <li><strong>Pages</strong> — click <strong>Crawl site</strong> to discover pages (sitemap, WordPress discovery, or pasted URLs), then check which ones to work with.</li>
+        <li><strong>Action</strong> — choose <strong>Create new schema</strong> (AI generates JSON-LD) or <strong>Delete existing schema</strong> (removes app-published schema), for the pages you selected.</li>
+        <li><strong>Review</strong> — for Create, click Generate; for Delete, removal is already previewed. Either way, open <strong>Review</strong> on any page to see the exact before/after JSON-LD.</li>
+        <li><strong>Apply</strong> — check the acknowledgement box and click Apply. Nothing is written to WordPress before this step.</li>
+      </ul>
+      <p class="muted">The page list stays visible below the wizard at every step, and the step indicator lets you jump back to any step you've already completed.</p>
+
+      <h3>4. After applying</h3>
+      <ul>
+        <li><strong>Verify live pages</strong> — re-checks the actual public page for the JSON-LD.</li>
+        <li><strong>Undo last change</strong> — restores the previous state, including the original Rank Math output, for selected pages.</li>
+        <li><strong>Run history</strong> — keeps every past run for the site so you can revisit it.</li>
+      </ul>
+
+      <div class="dialog-actions"><button type="button" class="btn btn-primary" id="close-help-footer">Got it</button></div>
+    </div>
+  </dialog>
+
   <main class="main">
     <div class="container">

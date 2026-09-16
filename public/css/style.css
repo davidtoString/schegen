@@ -93,6 +93,11 @@ a:hover {
 .site-dialog form { padding:1.5rem; }
 .site-dialog details { margin-top:1rem; padding:1rem; border:1px solid var(--border); border-radius:var(--radius-sm); }
 .site-dialog summary { cursor:pointer; font-weight:800; }
+.site-dialog h3 { margin:1.25rem 0 .5rem; font-size:1rem; }
+.site-dialog h3:first-of-type { margin-top:.5rem; }
+.site-dialog p { margin:0 0 .75rem; line-height:1.55; }
+.site-dialog ul { margin:0 0 .75rem 1.25rem; }
+.site-dialog li { margin-bottom:.4rem; line-height:1.5; }
 .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
 .dialog-actions { display:flex; justify-content:flex-end; gap:.65rem; margin-top:1.5rem; }
 .dialog-delete { margin-right:auto; }
