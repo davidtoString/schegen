@@ -27,7 +27,7 @@ async function call(prompt, options = {}) {
     throw new Error('OpenAI API key not provided. Enter your API key in the UI or add OPENAI_API_KEY to .env file.');
   }
 
-  const model = options.model || 'gpt-4o';
+  const model = options.model || 'gpt-4.1-nano';
   const temperature = options.temperature || 0.3;
   const maxTokens = options.maxTokens || 2000;
 

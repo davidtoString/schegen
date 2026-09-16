@@ -15,15 +15,15 @@ const providers = {
 // Available models - update this as new models are released
 const availableModels = {
   openai: [
-    { id: 'gpt-4o', name: 'GPT-4o', default: true },
+    { id: 'gpt-4o', name: 'GPT-4o' },
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
     { id: 'gpt-4.1', name: 'GPT-4.1' },
     { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
-    { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano' }
+    { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', default: true }
   ],
   gemini: [
-    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', default: true },
-    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', default: true },
     { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' }
   ]
 };

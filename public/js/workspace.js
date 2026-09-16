@@ -39,7 +39,7 @@ function guideText(run) {
   switch (state.wizardStep) {
     case 'pages': return 'Crawl the site, then check the pages you want to work with below.';
     case 'action': return 'Choose whether to create new schema or delete existing schema for the selected pages.';
-    case 'review': return state.wizardAction === 'delete' ? 'Confirm the pages below, then preview removal.' : 'Configure AI generation, then preview how the result will be published.';
+    case 'review': return state.wizardAction === 'delete' ? 'Confirm the pages below, then preview removal.' : 'Configure AI generation and click Generate — a preview runs automatically once it finishes.';
     case 'apply': return 'Open Review on each page below, approve, then apply. Undo remains available afterward.';
     default: return '';
   }
@@ -386,6 +386,12 @@ async function generateRun() {
     $('ai-key').value = '';
     state.activeRun.status = 'generating'; renderRun();
     notify('Generation started. This page will update as each URL completes.', 'success');
+    // Auto-preview once generation finishes: read-only (no WordPress write), so it just
+    // saves the redundant manual click before "Continue to Apply" — the actual write still
+    // requires the explicit acknowledgement checkbox and Apply click.
+    state.afterPoll = async () => {
+      if (state.activeRun.pages.some(page => page.schema)) await publishRun(true);
+    };
     startPolling();
   } catch (error) { notify(error.message, 'error'); }
 }
@@ -400,6 +406,8 @@ function startPolling() {
       state.activeRun = body.run; renderRun();
       if (!['generating', 'discovering', 'crawling', 'publishing'].includes(body.run.status)) {
         window.clearInterval(state.poller); await refreshHistory();
+        const afterPoll = state.afterPoll; state.afterPoll = null;
+        if (afterPoll) await afterPoll();
       }
     } catch (error) { window.clearInterval(state.poller); notify(error.message, 'error'); }
   }, 1500);
