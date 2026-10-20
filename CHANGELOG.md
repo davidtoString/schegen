@@ -1,6 +1,24 @@
 # Changelog
 
-All notable changes to the Schema Generator project.
+All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
+
+## [3.1.0] - 2026-10-20
+
+### Changed
+- Renamed the app to **Schematic**; the WordPress plugin is now **Schematic Connector 1.3.0** (same endpoints and stored data, so existing installs keep working).
+
+### Fixed
+- **Crawls blocked with HTTP 403** on CDNs such as Automattic's (a8c-cdn): the crawler now identifies itself honestly first, and only then tries other request identities.
+- **Sitemaps that redirect** (e.g. `/sitemap.xml` → `/sitemap_index.xml`) are followed. Sitemaps are also found through robots.txt, and one broken child sitemap no longer fails the whole crawl.
+- Discovery falls through WordPress API → sitemap → homepage links → homepage instead of failing the run.
+- Pages whose public URL is blocked are read through the authenticated WordPress REST API (plus Rank Math's headless `getHead`, when enabled). **Retry failed pages** re-crawls only the failures.
+
+### Added
+- **Schema types per page**: pick types for the selected pages (or per page with **Types**), plus optional AI instructions. Output is filtered to those types, and types the page can't support are reported.
+- Graph cleanup after generation: empty values, untyped nodes, duplicate `@id`s and dangling references to this site's entities are removed.
+- Warnings for canonical URLs that point elsewhere and for content read through the WordPress API.
+- **Export for header code plugins**: download `<script>` tags or JSON for selected pages, or copy one page's from its Review window.
+- **Backups**: original page JSON-LD, every generated version, and every publish/removal/undo are written to `data/backups/<host>/<date>/` and can be downloaded in one file.
 
 ## [2.8.1] - 2026-02-03
 

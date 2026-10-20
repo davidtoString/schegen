@@ -1,14 +1,14 @@
-const state = { sites: [], activeSite: null, activeRun: null, poller: null, wizardStep: 'pages', wizardAction: null, wizardMaxStep: 0 };
+const state = { sites: [], activeSite: null, activeRun: null, poller: null, wizardStep: 'pages', wizardAction: null, wizardMaxStep: 0, schemaTypes: [], plans: {}, reviewSchema: null };
 const WIZARD_STEPS = ['pages', 'action', 'review', 'apply'];
 
 const $ = id => document.getElementById(id);
-function savedContext() { try { return JSON.parse(sessionStorage.getItem('schema-workspace-context') || '{}'); } catch { return {}; } }
+function savedContext() { try { return JSON.parse(sessionStorage.getItem('schematic-context') || '{}'); } catch { return {}; } }
 function syncNavigation(replace = true) {
   const url = new URL(window.location.href);
   if (state.activeSite) url.searchParams.set('site', state.activeSite.id); else url.searchParams.delete('site');
   if (state.activeRun) url.searchParams.set('run', state.activeRun.id); else url.searchParams.delete('run');
   window.history[replace ? 'replaceState' : 'pushState']({}, '', url);
-  try { sessionStorage.setItem('schema-workspace-context', JSON.stringify({ site: state.activeSite?.id, run: state.activeRun?.id })); } catch { /* URL still preserves context. */ }
+  try { sessionStorage.setItem('schematic-context', JSON.stringify({ site: state.activeSite?.id, run: state.activeRun?.id })); } catch { /* URL still preserves context. */ }
 }
 
 function resetWizard() {
@@ -134,8 +134,81 @@ document.addEventListener('DOMContentLoaded', () => {
       state.activeRun = body.run; renderRun();
     } catch (error) { notify(error.message, 'error'); }
   });
+  $('recrawl-failed').addEventListener('click', recrawlFailed);
+  $('apply-types').addEventListener('click', () => {
+    const urls = selectedUrls();
+    if (!urls.length) return notify('Select pages first.', 'error');
+    const plan = readPlan('type-options', 'type-custom', 'type-notes');
+    urls.forEach(url => { state.plans[url] = plan; });
+    renderRun(); notify(`Schema types set for ${urls.length} page(s).`, 'success');
+  });
+  $('plan-form').addEventListener('submit', () => { state.plans[state.planUrl] = readPlan('plan-type-options', 'plan-custom', 'plan-notes'); renderRun(); });
+  $('plan-auto').addEventListener('click', () => { state.plans[state.planUrl] = { types: [], notes: $('plan-notes').value.trim() }; $('plan-dialog').close(); renderRun(); });
+  $('plan-cancel').addEventListener('click', () => $('plan-dialog').close());
+  document.querySelectorAll('[data-export]').forEach(button => button.addEventListener('click', () => {
+    const run = state.activeRun;
+    if (!run?.pages.some(page => page.schema)) return notify('Generate schema first.', 'error');
+    const params = new URLSearchParams({ format: button.dataset.export });
+    const urls = selectedUrls();
+    if (urls.length && urls.length < run.pages.length) urls.forEach(url => params.append('urls', url));
+    window.location.href = `/api/workspaces/runs/${run.id}/export?${params}`;
+  }));
+  $('download-backups').addEventListener('click', () => { window.location.href = `/api/workspaces/sites/${state.activeSite.id}/backups`; });
+  $('copy-json').addEventListener('click', () => copyText(JSON.stringify(state.reviewSchema, null, 2)));
+  $('copy-script').addEventListener('click', () => copyText(`<script type="application/ld+json">\n${JSON.stringify(state.reviewSchema, null, 2).replace(/</g, '\\u003c')}\n</script>`));
+  loadSchemaTypes().catch(error => notify(error.message, 'error'));
   loadSites();
 });
+
+async function copyText(text) {
+  if (!state.reviewSchema) return notify('This page has no generated schema yet.', 'error');
+  try { await navigator.clipboard.writeText(text); notify('Copied to clipboard.', 'success'); }
+  catch { notify('Copy failed. Select the JSON below and copy it manually.', 'error'); }
+}
+
+async function loadSchemaTypes() {
+  state.schemaTypes = (await api('/api/workspaces/schema-types')).types;
+  renderTypeOptions('type-options', []);
+}
+function renderTypeOptions(containerId, selected) {
+  $(containerId).replaceChildren(...state.schemaTypes.map(({ type, hint }) => {
+    const label = document.createElement('label'); const input = document.createElement('input');
+    input.type = 'checkbox'; input.value = type; input.checked = selected.includes(type);
+    const text = document.createElement('span'); text.textContent = type;
+    const small = document.createElement('small'); small.textContent = hint; text.append(small);
+    label.append(input, text); return label;
+  }));
+}
+function readPlan(containerId, customId, notesId) {
+  const types = [...$(containerId).querySelectorAll('input:checked')].map(input => input.value);
+  types.push(...$(customId).value.split(',').map(type => type.trim()).filter(Boolean));
+  return { types: [...new Set(types)], notes: $(notesId).value.trim() };
+}
+function planFor(page) { return state.plans[page.url] || page.schemaPlan || null; }
+function describePlan(plan) {
+  if (!plan || (!plan.types?.length && !plan.notes)) return 'Types: picker above, or AI chooses';
+  return `Types: ${plan.types?.length ? plan.types.join(', ') : 'AI chooses'}${plan.notes ? ' · has instructions' : ''}`;
+}
+function openPlan(page) {
+  const plan = planFor(page) || { types: [], notes: '' };
+  const known = state.schemaTypes.map(item => item.type);
+  state.planUrl = page.url;
+  $('plan-url').textContent = page.url;
+  renderTypeOptions('plan-type-options', plan.types || []);
+  $('plan-custom').value = (plan.types || []).filter(type => !known.includes(type)).join(', ');
+  $('plan-notes').value = plan.notes || '';
+  $('plan-dialog').showModal();
+}
+
+async function recrawlFailed() {
+  const urls = state.activeRun.pages.filter(page => page.status === 'failed' && !page.pageData).map(page => page.url);
+  if (!urls.length) return;
+  try {
+    await api(`/api/workspaces/runs/${state.activeRun.id}/recrawl`, { method: 'POST', body: JSON.stringify({ urls }) });
+    state.activeRun.status = 'crawling'; renderRun();
+    notify(`Retrying ${urls.length} page(s).`, 'success'); startPolling();
+  } catch (error) { notify(error.message, 'error'); }
+}
 
 let configuredAI;
 let modelDrafts = {};
@@ -373,7 +446,7 @@ async function generateRun() {
   if (!urls.length) return notify('Select at least one page first.', 'error');
   try {
     await api(`/api/workspaces/runs/${state.activeRun.id}/generate`, {
-      method: 'POST', body: JSON.stringify({ urls, useAI: true, provider: $('ai-provider').value, apiKey: $('ai-key').value, model: selectedModel('ai-model') || undefined })
+      method: 'POST', body: JSON.stringify({ urls, ...generationPlans(urls), useAI: true, provider: $('ai-provider').value, apiKey: $('ai-key').value, model: selectedModel('ai-model') || undefined })
     });
     $('ai-key').value = '';
     state.activeRun.status = 'generating'; renderRun();
@@ -386,6 +459,12 @@ async function generateRun() {
     };
     startPolling();
   } catch (error) { notify(error.message, 'error'); }
+}
+
+function generationPlans(urls) {
+  const plans = Object.fromEntries(urls.filter(url => state.plans[url]).map(url => [url, state.plans[url]]));
+  const picker = readPlan('type-options', 'type-custom', 'type-notes');
+  return { plans, ...(picker.types.length || picker.notes ? { defaultPlan: picker } : {}) };
 }
 
 function startPolling() {
@@ -425,7 +504,7 @@ function renderRun() {
   if (!run) {
     $('run-title').textContent = 'No crawl yet'; $('run-status').textContent = 'Ready'; $('run-summary').replaceChildren();
     $('pages-table').innerHTML = '<p class="muted">Discover pages to begin.</p>';
-    $('start-crawl').disabled = false; $('rollback-run').disabled = true; $('verify-run').disabled = true; $('run-message').textContent = '';
+    $('start-crawl').disabled = false; $('recrawl-failed').hidden = true; $('rollback-run').disabled = true; $('verify-run').disabled = true; $('run-message').textContent = '';
     renderWizard();
     return;
   }
@@ -450,6 +529,7 @@ function renderRun() {
     const review = document.createElement('button'); review.className = 'btn btn-secondary'; review.textContent = 'Review';
     review.addEventListener('click', () => {
       $('schema-review-url').textContent = page.url;
+      state.reviewSchema = page.schema || null;
       $('schema-review-json').textContent = JSON.stringify(page.schema || {}, null, 2);
       $('schema-review-existing').textContent = JSON.stringify(page.existingReview?.existing || page.pageData?.existingSchema || [], null, 2);
       const preview = page.existingReview;
@@ -458,12 +538,15 @@ function renderRun() {
       $('schema-review-after').textContent = JSON.stringify(preview ? preview.after : page.schema || null, null, 2);
       $('schema-review-records').textContent = JSON.stringify({ insertions: page.insertionHistory, previousReceipts: page.receiptHistory, lastInsertion: page.writeReceipt, rollbacks: page.rollbackHistory }, null, 2);
       $('schema-review-content').textContent = page.pageData?.content || 'No crawled content.';
-      $('schema-review-messages').textContent = [...(page.validation?.errors || []), ...(page.validation?.warnings || []), page.error, page.publishError, page.publishResult?.verificationMessage].filter(Boolean).join('\n');
+      $('schema-review-messages').textContent = [page.pageData?.fetchWarning, ...(page.validation?.errors || []), ...(page.validation?.warnings || []), page.error, page.publishError, page.publishResult?.verificationMessage].filter(Boolean).join('\n');
       $('schema-dialog').showModal();
     });
-    schemaCell.append(review);
+    const planText = document.createElement('span'); planText.className = 'plan-summary'; planText.textContent = describePlan(planFor(page));
+    const planButton = document.createElement('button'); planButton.className = 'btn btn-secondary'; planButton.textContent = 'Types';
+    planButton.disabled = !page.pageData; planButton.addEventListener('click', () => openPlan(page));
+    schemaCell.append(planText, review, planButton);
     const statusCell = document.createElement('td'); const badge = document.createElement('span'); badge.className = `status-dot ${page.status}`; badge.textContent = page.status; badge.title = page.error || ''; statusCell.append(badge);
-    const detail = document.createElement('small'); detail.textContent = page.error || page.publishError || page.decisionMessage || page.publishResult?.verificationMessage || page.preview?.verificationMessage || ''; statusCell.append(detail);
+    const detail = document.createElement('small'); detail.textContent = page.error || page.pageData?.fetchWarning || page.publishError || page.decisionMessage || page.publishResult?.verificationMessage || page.preview?.verificationMessage || ''; statusCell.append(detail);
     if (oldSelections.has(page.url)) checkbox.checked = oldSelections.get(page.url);
     checkbox.addEventListener('change', updatePublishControls);
     row.append(selectCell, pageCell, schemaCell, statusCell); tbody.append(row);
@@ -472,6 +555,8 @@ function renderRun() {
   $('select-all-pages')?.addEventListener('change', event => { document.querySelectorAll('.page-select').forEach(item => { item.checked = event.target.checked; }); updatePublishControls(); });
   const busy = ['generating', 'publishing', 'discovering', 'crawling'].includes(run.status);
   $('start-crawl').disabled = busy;
+  $('recrawl-failed').hidden = !run.pages.some(page => page.status === 'failed' && !page.pageData);
+  $('recrawl-failed').disabled = busy;
   $('verify-run').disabled = busy || !(run.pages.some(page => page.schema) || run.pages.some(page => page.status === 'schema_removed'));
   $('rollback-run').disabled = busy || !run.pages.some(page => page.writeReceipt && !page.writeReceipt.rolledBack);
   renderWizard();

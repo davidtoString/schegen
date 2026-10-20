@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: Schema Workspace Connector
- * Description: Application Password authenticated schema storage and public JSON-LD output for Schema Workspace.
- * Version: 1.2.0
+ * Plugin Name: Schematic Connector
+ * Description: Application Password authenticated schema storage and public JSON-LD output for Schematic. (Formerly Schema Workspace Connector; same data and endpoints.)
+ * Version: 1.3.0
  */
 defined('ABSPATH') || exit;
 
@@ -32,7 +32,7 @@ function swc_snapshot($id) {
 add_action('rest_api_init', function () {
     register_rest_route('schema-workspace/v1', '/status', array(
         'methods' => 'GET', 'permission_callback' => 'swc_allowed',
-        'callback' => function () { return array('success' => true, 'version' => '1.2.0', 'rankMath' => defined('RANK_MATH_VERSION'), 'rankMathPro' => defined('RANK_MATH_PRO_VERSION'), 'siteUrl' => home_url(), 'user' => wp_get_current_user()->display_name); }
+        'callback' => function () { return array('success' => true, 'version' => '1.3.0', 'rankMath' => defined('RANK_MATH_VERSION'), 'rankMathPro' => defined('RANK_MATH_PRO_VERSION'), 'siteUrl' => home_url(), 'user' => wp_get_current_user()->display_name); }
     ));
     register_rest_route('schema-workspace/v1', '/restore', array(
         'methods' => 'POST', 'permission_callback' => 'swc_allowed',

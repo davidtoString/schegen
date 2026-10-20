@@ -8,23 +8,28 @@ const httpAgent = new http.Agent({ keepAlive: false });
 const httpsAgent = new https.Agent({ keepAlive: false });
 
 /**
- * User-Agent rotation pool - real browser user agents
+ * Honest crawler identity. Bot-management CDNs (Automattic's a8c-cdn, many WAFs) block
+ * requests that claim to be Chrome but come from a datacenter IP without a browser's TLS
+ * fingerprint, while letting a self-identified crawler through. So this goes first.
  */
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0'
-];
+const CRAWLER_AGENT = `Mozilla/5.0 (compatible; Schematic/3.1; +${process.env.PUBLIC_URL || 'https://schemagenerator.onpurposemedia.com'})`;
+const BROWSER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 /**
- * Get a random User-Agent from the pool
+ * Request identities tried in order when a site refuses one (401/403/406/429/503).
  */
-function getRandomUserAgent() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
+const REQUEST_PROFILES = [
+  () => ({ 'User-Agent': CRAWLER_AGENT, 'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' }),
+  () => ({ 'Accept': '*/*' }),
+  url => ({
+    'User-Agent': BROWSER_AGENT,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Upgrade-Insecure-Requests': '1',
+    'Referer': `${new URL(url).origin}/`
+  })
+];
+const BLOCKED_STATUSES = [401, 403, 406, 429, 503];
 
 /**
  * Delay helper for rate limiting
@@ -37,66 +42,41 @@ function delay(ms) {
  * Last request timestamp for rate limiting
  */
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 1500; // Minimum 1.5 seconds between requests
+const MIN_REQUEST_INTERVAL = Number(process.env.CRAWL_INTERVAL_MS ?? 1500); // Minimum gap between requests
 
 /**
- * Get browser-like headers for a given URL
+ * Fetch a URL, switching request identity when the site blocks one and retrying
+ * transient errors (socket hang up, timeouts, 5xx) with backoff.
  */
-function getBrowserHeaders(url) {
-  const urlObj = new URL(url);
-  const userAgent = getRandomUserAgent();
-
-  return {
-    'User-Agent': userAgent,
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1',
-    'Cache-Control': 'max-age=0',
-    'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Windows"',
-    // Add referer for subsequent requests (looks more natural)
-    'Referer': `${urlObj.protocol}//${urlObj.host}/`
-  };
-}
-
-/**
- * Fetch a page with retry logic for transient errors (socket hang up, timeouts)
- */
-async function fetchWithRetry(url, maxRetries = 3) {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await axios.get(url, {
-        timeout: 45000,
-        maxRedirects: 5,
-        maxContentLength: 5 * 1024 * 1024,
-        validateStatus: (status) => status < 400,
-        headers: getBrowserHeaders(url),
-        withCredentials: false,
-        decompress: true,
-        httpAgent,
-        httpsAgent
-      });
-      return response;
-    } catch (error) {
-      // Don't retry on permanent errors (4xx, DNS failure, etc.)
-      if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') throw error;
-      if (error.response && error.response.status < 500) throw error;
-
-      if (attempt < maxRetries) {
-        // Exponential backoff: 2s, 4s
-        await delay(2000 * attempt);
-        continue;
+async function fetchWithRetry(url, options = {}) {
+  const maxRetries = options.maxRetries || 3;
+  let lastError;
+  for (const profile of REQUEST_PROFILES) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await axios.get(url, {
+          timeout: options.timeout || 45000,
+          maxRedirects: 5,
+          maxContentLength: 5 * 1024 * 1024,
+          validateStatus: (status) => status < 400,
+          headers: profile(url),
+          withCredentials: false,
+          decompress: true,
+          httpAgent,
+          httpsAgent
+        });
+      } catch (error) {
+        lastError = error;
+        const status = error.response?.status;
+        // DNS failure, refused connection and 404/410 won't change with another identity.
+        if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') throw error;
+        if (status && status < 500 && !BLOCKED_STATUSES.includes(status)) throw error;
+        if (BLOCKED_STATUSES.includes(status)) { await delay(status === 429 ? 5000 : 500); break; }
+        if (attempt < maxRetries) await delay(2000 * attempt);
       }
-      throw error;
     }
   }
+  throw lastError;
 }
 
 /**
@@ -104,7 +84,7 @@ async function fetchWithRetry(url, maxRetries = 3) {
  * @param {string} url - URL to fetch
  * @returns {string} - Raw HTML string
  */
-async function fetchHtml(url) {
+async function fetchHtml(url, options) {
   const now = Date.now();
   const timeSinceLastRequest = now - lastRequestTime;
   if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
@@ -112,55 +92,17 @@ async function fetchHtml(url) {
   }
   lastRequestTime = Date.now();
 
-  const response = await fetchWithRetry(url);
-  return response.data;
+  const response = await fetchWithRetry(url, options);
+  return typeof response.data === 'string' ? response.data : String(response.data);
 }
 
 /**
  * Scrape a page and extract relevant content for schema generation
  */
 async function scrape(url) {
+  let html;
   try {
-    const html = await fetchHtml(url);
-
-    const $ = cheerio.load(html);
-
-    // Extract main content; fall back to visible body text if selectors miss
-    let content = extractContent($);
-    let textContent = '';
-    if (!content) {
-      // Remove non-visible elements then grab body text as fallback
-      const $clone = $.root().clone();
-      $clone.find('script, style, noscript, svg, iframe, nav').remove();
-      textContent = $clone.find('body').text().replace(/\s+/g, ' ').trim().substring(0, 5000);
-    }
-
-    const pageData = {
-      url,
-      language: $('html').attr('lang') || '',
-      robots: $('meta[name="robots"]').attr('content') || '',
-      title: extractTitle($),
-      description: extractDescription($),
-      content,
-      textContent,
-      headings: extractHeadings($),
-      author: extractAuthor($),
-      publishDate: extractPublishDate($),
-      modifiedDate: extractModifiedDate($),
-      featuredImage: extractFeaturedImage($),
-      categories: extractCategories($),
-      tags: extractTags($),
-      existingSchema: extractExistingSchema($),
-      wordpressInfo: extractWordPressInfo($),
-      faqs: extractFAQs($),
-      breadcrumbs: extractBreadcrumbs($, url),
-      phone: extractPhone($),
-      serviceAreas: extractServiceAreas($)
-    };
-
-    console.log(`[scrape] ${url}: title="${(pageData.title||'').substring(0,50)}" content=${content.length} textContent=${textContent.length} faqs=${pageData.faqs.length}`);
-
-    return pageData;
+    html = await fetchHtml(url);
   } catch (error) {
     // Provide more descriptive error messages
     if (error.code === 'ECONNREFUSED') {
@@ -177,6 +119,80 @@ async function scrape(url) {
     }
     throw new Error(`Failed to scrape ${url}: ${error.message}`);
   }
+  return parse(html, url);
+}
+
+/**
+ * Extract schema-relevant page data from HTML that was already fetched
+ * (publicly, or rebuilt from the WordPress API when the public page is blocked).
+ */
+function parse(html, url) {
+  const $ = cheerio.load(html);
+
+  // Extract main content; fall back to visible body text if selectors miss
+  let content = extractContent($);
+  let textContent = '';
+  if (!content) {
+    // Remove non-visible elements then grab body text as fallback
+    const $clone = $.root().clone();
+    $clone.find('script, style, noscript, svg, iframe, nav').remove();
+    textContent = $clone.find('body').text().replace(/\s+/g, ' ').trim().substring(0, 5000);
+  }
+
+  const pageData = {
+    url,
+    canonical: extractCanonical($, url),
+    language: $('html').attr('lang') || '',
+    robots: $('meta[name="robots"]').attr('content') || '',
+    title: extractTitle($),
+    description: extractDescription($),
+    content,
+    textContent,
+    headings: extractHeadings($),
+    author: extractAuthor($),
+    publishDate: extractPublishDate($),
+    modifiedDate: extractModifiedDate($),
+    featuredImage: extractFeaturedImage($),
+    categories: extractCategories($),
+    tags: extractTags($),
+    existingSchema: extractExistingSchema($),
+    wordpressInfo: extractWordPressInfo($),
+    faqs: extractFAQs($),
+    breadcrumbs: extractBreadcrumbs($, url),
+    phone: extractPhone($),
+    serviceAreas: extractServiceAreas($)
+  };
+
+  console.log(`[scrape] ${url}: title="${(pageData.title||'').substring(0,50)}" content=${content.length} textContent=${textContent.length} faqs=${pageData.faqs.length}`);
+
+  return pageData;
+}
+
+function extractCanonical($, url) {
+  const href = $('link[rel="canonical"]').attr('href');
+  if (!href) return '';
+  try { return new URL(href, url).href; } catch { return ''; }
+}
+
+/**
+ * Same-origin page links from a page (used to discover pages when no sitemap or API is reachable).
+ */
+function extractLinks(html, baseUrl) {
+  const $ = cheerio.load(html);
+  const origin = new URL(baseUrl).origin;
+  const links = new Set();
+  $('a[href]').each((_, el) => {
+    try {
+      const link = new URL($(el).attr('href'), baseUrl);
+      link.hash = '';
+      if (link.origin !== origin || link.search) return;
+      const path = link.pathname.toLowerCase();
+      if (/\.(jpe?g|png|gif|svg|webp|pdf|css|js|xml|zip|mp4)$/.test(path)) return;
+      if (/^\/(wp-admin|wp-login|wp-content|wp-json|feed|cart|checkout|my-account)/.test(path) || /\/(feed|page\/\d+)\/?$/.test(path)) return;
+      links.add(link.href);
+    } catch { /* Not a URL. */ }
+  });
+  return [...links];
 }
 
 function extractTitle($) {
@@ -645,5 +661,9 @@ function extractServiceAreas($) {
 
 
 module.exports = {
-  scrape
+  scrape,
+  parse,
+  fetchHtml,
+  fetchWithRetry,
+  extractLinks
 };

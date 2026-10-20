@@ -26,7 +26,7 @@ function assess(before, existing, generated, decision, owned) {
   if (!skip && occupied && !owned) blocked = 'The mapped field contains schema not recorded as app-managed. Keep it or use a separate empty field; it will not be overwritten.';
   if (!skip && thirdParty.length && decision !== 'review' && !suppress) blocked = 'Other public JSON-LD exists. Review conflicts and explicitly acknowledge it before publishing.';
   if (!skip && !suppress && conflicts.some(message => message.startsWith('Same entity ID:'))) blocked = 'Proposed schema reuses an existing third-party entity ID. Resolve it before publishing.';
-  if (suppress && (before.metaKey || !before.schemaControl)) blocked = 'Replacing/removing Rank Math output requires Workspace Connector 1.2 or later. Update the connector and use connector integration.';
+  if (suppress && (before.metaKey || !before.schemaControl)) blocked = 'Replacing/removing Rank Math output requires Schematic Connector 1.2 or later. Update the connector and use connector integration.';
   return { before, after: generated, existing, thirdParty, conflicts: [...new Set(conflicts)], decision, skip, blocked, suppressRankMath: suppress, requiresAcknowledgement: !skip && (suppress || thirdParty.length > 0) };
 }
 module.exports = { assess, storedGraph };

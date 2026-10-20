@@ -74,7 +74,7 @@ async function bootstrapAdminFromEnv() {
 
 bootstrapAdminFromEnv().then(() => {
   const server = app.listen(PORT, () => {
-    console.log(`Schema Generator running at http://localhost:${PORT}`);
+    console.log(`Schematic running at http://localhost:${PORT}`);
   });
 
   // Increase server timeout for long-running scrape operations (5 minutes)

@@ -1,0 +1,42 @@
+# Deploy behind this host's Traefik v2 instance (shared `traefik_proxy`
+# external network, Traefik owns ports 80/443, TLS terminated at Cloudflare
+# same as the sftpgo stack). No host ports published here.
+#
+#   docker compose -f compose.host.yaml up -d --build
+#   docker compose -f compose.host.yaml exec schema-workspace node scripts/admin-user.js admin
+
+networks:
+  traefik_proxy:
+    external: true
+
+services:
+  schema-workspace:
+    container_name: schematic
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 8080
+      NODE_ENV: production
+      DATA_DIR: /app/data
+      APP_SECRET: ${APP_SECRET:?Set a strong permanent APP_SECRET}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MAX_CRAWL_PAGES: ${MAX_CRAWL_PAGES:-100}
+      PUBLIC_URL: https://${APP_DOMAIN:?Set APP_DOMAIN to your public hostname}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    expose:
+      - "8080"
+    networks:
+      - traefik_proxy
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.schegen.rule: "Host(`${APP_DOMAIN}`)"
+      traefik.http.services.schegen.loadbalancer.server.port: "8080"
+    volumes:
+      - schema-workspace-data:/app/data
+      - schema-workspace-logs:/app/logs
+
+volumes:
+  schema-workspace-data:
+  schema-workspace-logs:

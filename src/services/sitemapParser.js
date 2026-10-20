@@ -1,6 +1,6 @@
-const axios = require('axios');
 const cheerio = require('cheerio');
 const { XMLParser } = require('fast-xml-parser');
+const { fetchWithRetry } = require('./pageScraper');
 
 const parser = new XMLParser({
   processEntities: false,
@@ -9,21 +9,11 @@ const parser = new XMLParser({
 });
 
 /**
- * Get browser-like headers for sitemap requests
+ * Same site, treating www and the bare domain as one (sites often list one and redirect to the other).
  */
-function getSitemapHeaders(url) {
-  const urlObj = new URL(url);
-  return {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Accept': 'text/xml,application/xml,text/html,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Referer': `${urlObj.protocol}//${urlObj.host}/`
-  };
+function sameSite(a, b) {
+  const host = value => new URL(value).host.toLowerCase().replace(/^www\./, '');
+  try { return host(a) === host(b); } catch { return false; }
 }
 
 /**
@@ -66,8 +56,8 @@ function matchesPostTypeFilter(sitemapUrl, postTypeFilter) {
  */
 async function parse(sitemapUrl, postTypeFilter = 'all', crawlContext = null) {
   const urls = [];
-  const context = crawlContext || { visited: new Set(), depth: 0, maxDepth: 6, maxUrls: 5000, origin: new URL(sitemapUrl).origin };
-  if (new URL(sitemapUrl).origin !== context.origin) throw new Error('Nested sitemap must stay on the same site.');
+  const context = crawlContext || { visited: new Set(), depth: 0, maxDepth: 6, maxUrls: 5000, origin: new URL(sitemapUrl).origin, warnings: [] };
+  if (!sameSite(sitemapUrl, context.origin)) throw new Error('Nested sitemap must stay on the same site.');
   if (context.visited.size >= 100) throw new Error('Sitemap file limit reached. Supply a smaller sitemap.');
 
   if (context.depth > context.maxDepth) {
@@ -77,30 +67,15 @@ async function parse(sitemapUrl, postTypeFilter = 'all', crawlContext = null) {
   context.visited.add(sitemapUrl);
 
   try {
-    let response;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        response = await axios.get(sitemapUrl, {
-          timeout: 45000,
-          maxRedirects: 0,
-          maxContentLength: 10 * 1024 * 1024,
-          headers: getSitemapHeaders(sitemapUrl),
-          decompress: true
-        });
-        break;
-      } catch (fetchError) {
-        if (attempt === 2) throw fetchError;
-        // Brief pause before retry
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    }
-
+    const response = await fetchWithRetry(sitemapUrl, { maxRetries: 2 });
+    const finalUrl = response.request?.res?.responseUrl || sitemapUrl;
+    if (!sameSite(finalUrl, context.origin)) throw new Error(`Sitemap redirected off-site to ${finalUrl}`);
     const contentType = response.headers['content-type'] || '';
     const body = typeof response.data === 'string' ? response.data : String(response.data);
 
     // Detect HTML sitemap (not XML)
     if (contentType.includes('text/html') || (!contentType.includes('xml') && (body.trimStart().startsWith('<!') || body.trimStart().startsWith('<html')))) {
-      const htmlUrls = parseHtmlSitemap(body, sitemapUrl);
+      const htmlUrls = parseHtmlSitemap(body, finalUrl);
       urls.push(...htmlUrls);
       return urls;
     }
@@ -117,8 +92,12 @@ async function parse(sitemapUrl, postTypeFilter = 'all', crawlContext = null) {
       for (const sitemap of sitemaps) {
         const nestedUrl = sitemap.loc;
         if (nestedUrl && matchesPostTypeFilter(nestedUrl, postTypeFilter)) {
-          const nestedUrls = await parse(nestedUrl, postTypeFilter, { ...context, depth: context.depth + 1 });
-          urls.push(...nestedUrls);
+          // One broken child sitemap shouldn't sink the whole crawl; note it and keep going.
+          try {
+            urls.push(...await parse(nestedUrl, postTypeFilter, { ...context, depth: context.depth + 1 }));
+          } catch (nestedError) {
+            (context.warnings ||= []).push(nestedError.message);
+          }
           if (urls.length >= context.maxUrls) return urls.slice(0, context.maxUrls);
         }
       }
@@ -181,28 +160,27 @@ function parseHtmlSitemap(html, sitemapUrl) {
 }
 
 /**
- * Try common sitemap locations
+ * Find the site's sitemap: robots.txt "Sitemap:" lines first, then common locations.
+ * Uses GET, since many hosts and CDNs reject or mishandle HEAD.
  */
 async function findSitemap(siteUrl) {
   const baseUrl = siteUrl.replace(/\/$/, '');
-  const commonPaths = [
-    '/sitemap.xml',
-    '/sitemap_index.xml',
-    '/wp-sitemap.xml',
-    '/sitemap/sitemap-index.xml',
-    '/html-sitemap/'
-  ];
+  const candidates = [];
+  try {
+    const robots = await fetchWithRetry(`${baseUrl}/robots.txt`, { maxRetries: 1, timeout: 15000 });
+    for (const match of String(robots.data).matchAll(/^\s*sitemap:\s*(\S+)/gim)) {
+      if (sameSite(match[1], baseUrl)) candidates.push(match[1]);
+    }
+  } catch { /* No robots.txt; fall through to common paths. */ }
+  candidates.push(...['/sitemap_index.xml', '/sitemap.xml', '/wp-sitemap.xml', '/sitemap/sitemap-index.xml', '/page-sitemap.xml', '/html-sitemap/'].map(path => baseUrl + path));
 
-  for (const path of commonPaths) {
+  for (const url of [...new Set(candidates)]) {
     try {
-      const url = baseUrl + path;
-      await axios.head(url, {
-        timeout: 5000,
-        headers: getSitemapHeaders(url)
-      });
-      return url;
+      const response = await fetchWithRetry(url, { maxRetries: 1, timeout: 15000 });
+      const body = String(response.data).trimStart();
+      if (/<(urlset|sitemapindex)[\s>]/.test(body) || (url.endsWith('/') && /<a\s/i.test(body))) return response.request?.res?.responseUrl || url;
     } catch {
-      // Try next path
+      // Try next location
     }
   }
 
@@ -211,5 +189,6 @@ async function findSitemap(siteUrl) {
 
 module.exports = {
   parse,
-  findSitemap
+  findSitemap,
+  sameSite
 };

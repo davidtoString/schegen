@@ -6,7 +6,7 @@
  *   1. Auto-generated: WebPage, BreadcrumbList, WebSite, Organization, ImageObject
  *      (built on the fly from global settings and page content)
  *   2. Custom schemas: Stored in rank_math_schema_* post meta
- *      (inserted by the Schema Generator app via the helper plugin)
+ *      (inserted by the Schematic app via the helper plugin)
  *
  * This snippet removes ONLY the auto-generated ones so your custom schemas
  * are the only structured data on each page.

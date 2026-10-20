@@ -1,4 +1,4 @@
-# Schema Workspace v3.0.0
+# Schematic v3.1.0
 
 A Docker-first app that crawls WordPress sites, generates JSON-LD schema with AI (OpenAI or Gemini), and publishes it back to WordPress — with dry-run previews, per-page review, and one-click undo. See [WORDPRESS-WORKFLOW.md](WORDPRESS-WORKFLOW.md) for field mappings and troubleshooting, [CLOUD-DEPLOYMENT.md](CLOUD-DEPLOYMENT.md) for HTTPS/auth/backups, and [TESTING.md](TESTING.md) for what's verified.
 
@@ -27,7 +27,7 @@ The page list stays visible at every step, and the step indicator lets you jump 
 
 ## WordPress integration
 
-Every site connects through the **Workspace Connector** plugin: download it from the toolbar, install it on the WordPress site, and activate. It exposes dedicated endpoints for reading/writing schema and reversibly suppressing Rank Math's own output — that reversibility is what makes replace/remove and Undo work.
+Every site connects through the **Schematic Connector** plugin: download it from the toolbar, install it on the WordPress site, and activate. It exposes dedicated endpoints for reading/writing schema and reversibly suppressing Rank Math's own output — that reversibility is what makes replace/remove and Undo work.
 
 ## Configuration
 

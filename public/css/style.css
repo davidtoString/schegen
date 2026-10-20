@@ -2487,3 +2487,10 @@ html {
 .login-card pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--code-bg); padding: 12px; border-radius: var(--radius-sm); font-size: .85rem; }
 .login-error { color: var(--danger); font-size: .9rem; }
 .logout-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.type-picker { margin:1rem 0; padding:1rem; border:1px solid var(--border); border-radius:8px; }
+.type-picker legend { font-weight:600; padding:0 .4rem; }
+.type-options { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:.35rem .75rem; margin:.5rem 0 1rem; }
+.type-options label { display:flex; align-items:flex-start; gap:.45rem; font-weight:400; margin:0; cursor:pointer; }
+.type-options input { width:auto; margin-top:.2rem; }
+.type-options small { display:block; color:var(--text-secondary); font-size:.72rem; }
+.plan-summary { display:block; font-size:.75rem; color:var(--text-secondary); margin:.2rem 0; }

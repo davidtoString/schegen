@@ -1,6 +1,9 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { isDeepStrictEqual } = require('node:util');
+const { fetchWithRetry } = require('./pageScraper');
+
+const escapeHtml = value => String(value || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 function create(site) {
   const base = new URL(site.url);
@@ -20,7 +23,7 @@ function create(site) {
   const client = {
     async testConnection() {
       try { return (await http.get('schema-workspace/v1/status')).data; }
-      catch (error) { throw new Error(`WordPress connector unavailable: ${error.response?.data?.message || error.message}. Install and activate Schema Workspace Connector and check the Application Password.`); }
+      catch (error) { throw new Error(`WordPress connector unavailable: ${error.response?.data?.message || error.message}. Install and activate Schematic Connector and check the Application Password.`); }
     },
     async discover(limit = 100, filter = 'all') {
       const types = (await http.get('wp/v2/types')).data;
@@ -41,13 +44,46 @@ function create(site) {
       }
       return pages;
     },
+    /**
+     * Rebuild a page's HTML from the authenticated REST API, for when the public page is
+     * blocked by a firewall/CDN. Logged-in API requests aren't subject to bot checks the way
+     * anonymous page views are. Returns HTML that pageScraper.parse() understands.
+     */
+    async fetchContent(page) {
+      checkUrl(page.url);
+      const fields = { _fields: 'id,link,title,content,excerpt,date,modified,type', context: 'view' };
+      let post;
+      if (page.endpoint && page.postId) post = (await http.get(`${page.endpoint}/${page.postId}`, { params: fields })).data;
+      else {
+        const path = new URL(page.url).pathname.replace(/\/$/, '');
+        const slug = path.split('/').pop();
+        const types = (await http.get('wp/v2/types')).data;
+        for (const type of Object.values(types)) {
+          if (!type.rest_base || !/^[\w-]+$/.test(type.rest_base)) continue;
+          const namespace = /^[\w/-]+$/.test(type.rest_namespace || '') ? type.rest_namespace : 'wp/v2';
+          const params = slug ? { ...fields, slug } : { ...fields, per_page: 100 };
+          let found;
+          try { found = (await http.get(`${namespace}/${type.rest_base}`, { params })).data; } catch { continue; }
+          post = (Array.isArray(found) ? found : []).find(item => item.link && new URL(item.link).pathname.replace(/\/$/, '') === path);
+          if (post) break;
+        }
+      }
+      if (!post) throw new Error('WordPress API has no published post or page at this URL.');
+      // Rank Math's headless endpoint (when enabled) gives the real <head>: meta, canonical, existing JSON-LD.
+      let head = `<title>${escapeHtml(post.title?.rendered)}</title>`;
+      try {
+        const rankMath = (await http.get('rankmath/v1/getHead', { params: { url: page.url } })).data;
+        if (rankMath?.head) head = rankMath.head;
+      } catch { /* Headless support off or Rank Math absent. */ }
+      return `<html><head>${head}</head><body class="${escapeHtml(post.type)}"><main><article><h1>${post.title?.rendered || ''}</h1>${post.content?.rendered || ''}</article></main></body></html>`;
+    },
     async snapshot(url) {
       checkUrl(url);
       return (await http.get('schema-workspace/v1/schema', { params: { url } })).data;
     },
     async inspectPublic(url) {
       checkUrl(url);
-      const response = await axios.get(url, { timeout: 30000, maxRedirects: 0, maxContentLength: 5 * 1024 * 1024 });
+      const response = await fetchWithRetry(url, { maxRetries: 2, timeout: 30000 });
       const $ = cheerio.load(response.data);
       return $('script[type="application/ld+json"]').toArray().map(element => {
         try { return JSON.parse($(element).text()); } catch { return { invalidJSONLD: true }; }
@@ -80,7 +116,7 @@ function create(site) {
       checkUrl(url);
       try {
         // Public request deliberately has no credentials. Check what visitors and crawlers actually receive.
-        const response = await axios.get(url, { timeout: 30000, maxRedirects: 0, maxContentLength: 5 * 1024 * 1024 });
+        const response = await fetchWithRetry(url, { maxRetries: 2, timeout: 30000 });
         const $ = cheerio.load(response.data);
         const selector = 'script[type="application/ld+json"]';
         const verified = $(selector).toArray().some(element => {

@@ -75,5 +75,5 @@ test('wizard steps toggle panels, mark progress, and preserve site/run context i
   assert.ok(wizardButtons[1].classes.has('reachable'), 'a completed step stays clickable to go back');
   assert.equal(vm.runInContext('state.wizardMaxStep', context), 2);
   assert.equal(vm.runInContext('state.activeRun.pages.length', context), 1);
-  assert.deepEqual(JSON.parse(session.get('schema-workspace-context')), { site: 'site-a', run: 'run-a' });
+  assert.deepEqual(JSON.parse(session.get('schematic-context')), { site: 'site-a', run: 'run-a' });
 });

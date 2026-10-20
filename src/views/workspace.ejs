@@ -16,7 +16,7 @@
   <div class="workspace-main">
     <section id="empty-state" class="card empty-state">
       <h3>Add your first site</h3>
-      <p>Install the Workspace Connector plugin on WordPress, then connect it here.</p>
+      <p>Install the Schematic Connector plugin on WordPress, then connect it here.</p>
       <div class="summary-actions" style="justify-content:center">
         <a class="btn btn-secondary" href="/api/workspaces/connector" download>Download plugin</a>
         <button class="btn btn-primary" data-action="new-site">Connect WordPress</button>
@@ -51,7 +51,7 @@
         <label for="manual-urls">Specific page URLs <small>(optional, one per line)</small></label>
         <textarea id="manual-urls" rows="3" placeholder="https://example.com/about/"></textarea>
         </details>
-        <button class="btn btn-primary" id="start-crawl">Crawl site</button>
+        <div class="summary-actions" style="justify-content:flex-start"><button class="btn btn-primary" id="start-crawl">Crawl site</button><button class="btn btn-secondary" id="recrawl-failed" hidden>Retry failed pages</button></div>
         <p class="muted selection-hint"></p>
         <div class="summary-actions">
           <button class="btn btn-primary" id="pages-continue" disabled>Continue →</button>
@@ -85,6 +85,16 @@
             <label id="ai-model-custom" hidden>Custom model ID<input id="ai-model" placeholder="Exact model ID for this provider"></label>
             <details class="workspace-options"><summary>Use a different API key for this run</summary><label for="ai-key">API key <small>(not saved)</small></label><input id="ai-key" type="password" autocomplete="off" placeholder="Use saved key from AI Settings"></details>
           </div>
+          <fieldset class="type-picker">
+            <legend>Schema types to generate</legend>
+            <p class="muted">Pick the types for the selected pages, or leave all unchecked to let the AI choose. Use <strong>Types</strong> on a row to set one page differently.</p>
+            <div id="type-options" class="type-options"></div>
+            <label for="type-custom">Other schema.org types <small>(optional, comma-separated)</small></label>
+            <input id="type-custom" placeholder="e.g. HVACBusiness, Plumber">
+            <label for="type-notes">Instructions for the AI <small>(optional)</small></label>
+            <textarea id="type-notes" rows="2" placeholder="e.g. Service area is Starkville and Columbus, MS. Use the FAQ section only."></textarea>
+            <button type="button" class="btn btn-secondary" id="apply-types">Use these types for selected pages</button>
+          </fieldset>
           <button class="btn btn-primary" id="generate-run" disabled>Generate AI schema</button>
         </div>
         <div id="review-delete-panel" hidden>
@@ -121,6 +131,13 @@
           <button class="btn btn-secondary" id="verify-run" disabled>Verify live pages</button>
           <button class="btn btn-secondary" id="rollback-run" disabled>Undo last change</button>
         </div>
+        <h4>Use with a header code plugin instead</h4>
+        <p class="muted">Download the generated JSON-LD to paste into WPCode, Insert Headers and Footers, or a similar plugin. If you do, don't also apply it here, or the page will carry the schema twice.</p>
+        <div class="summary-actions" style="justify-content:flex-start">
+          <button class="btn btn-secondary" data-export="html">Download &lt;script&gt; tags</button>
+          <button class="btn btn-secondary" data-export="json">Download JSON</button>
+          <button class="btn btn-secondary" id="download-backups">Download all backups</button>
+        </div>
       </section>
 
       <section class="card run-card">
@@ -152,7 +169,7 @@
       <label>WordPress username<input id="wp-username" autocomplete="username"></label>
       <label>Application password<input id="wp-password" type="password" autocomplete="new-password" placeholder="Leave blank to keep existing"></label>
     </div>
-    <p><a href="/api/workspaces/connector" download>Download Connector 1.2 ZIP</a>. Upload or update under Plugins → Add New → Upload Plugin and activate. Required for reversible Rank Math replacement/removal.</p>
+    <p><a href="/api/workspaces/connector" download>Download Connector 1.3 ZIP</a>. Upload or update under Plugins → Add New → Upload Plugin and activate. Required for reversible Rank Math replacement/removal.</p>
     <label>Default schema image <small>(optional)</small><input id="org-image" type="url" placeholder="https://example.com/brand-photo.jpg"></label>
     <p class="muted">Used only on pages where no suitable content photo was found on the page itself (decorative dividers, spacers and icons are automatically skipped, never chosen). Pages with their own image keep it — this never overrides a good page-specific photo.</p>
     <div class="dialog-actions"><button type="button" class="btn btn-danger dialog-delete" id="delete-site" hidden>Delete site</button><button type="button" class="btn btn-secondary" id="cancel-dialog">Cancel</button><button type="submit" class="btn btn-primary">Save site</button></div>
@@ -165,13 +182,26 @@
     <h2>Schema and crawl review</h2>
     <p id="schema-review-url"></p>
     <pre id="schema-review-messages" style="white-space:pre-wrap"></pre>
-    <h3>Generated JSON-LD</h3><pre id="schema-review-json" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+    <h3>Generated JSON-LD</h3>
+    <div class="summary-actions" style="justify-content:flex-start"><button type="button" class="btn btn-secondary" id="copy-script">Copy &lt;script&gt; tag</button><button type="button" class="btn btn-secondary" id="copy-json">Copy JSON</button></div>
+    <pre id="schema-review-json" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
       <h3>Existing JSON-LD</h3><pre id="schema-review-existing" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
       <h3>Publish preview</h3><pre id="schema-review-decision" style="white-space:pre-wrap"></pre>
       <div class="schema-comparison"><section><h3>Stored value before</h3><pre id="schema-review-before"></pre></section><section><h3>Proposed app schema</h3><pre id="schema-review-after"></pre></section></div>
       <details><summary>Insertion and rollback records</summary><pre id="schema-review-records" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
     <h3>Crawled content</h3><pre id="schema-review-content" style="white-space:pre-wrap"></pre>
   </div>
+</dialog>
+
+<dialog id="plan-dialog" class="site-dialog">
+  <form id="plan-form" method="dialog" style="padding:1.5rem">
+    <h2>Schema types for this page</h2>
+    <p id="plan-url" class="muted"></p>
+    <div id="plan-type-options" class="type-options"></div>
+    <label>Other schema.org types <small>(comma-separated)</small><input id="plan-custom"></label>
+    <label>Instructions for the AI<textarea id="plan-notes" rows="3"></textarea></label>
+    <div class="dialog-actions"><button type="button" class="btn btn-secondary" id="plan-auto">Let AI choose</button><button type="button" class="btn btn-secondary" id="plan-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
+  </form>
 </dialog>
 
 <dialog id="ai-settings-dialog" class="site-dialog">
@@ -197,6 +227,6 @@
 <script src="/js/workspace.js"></script>
     </div>
   </main>
-  <footer class="footer"><div class="container"><p>Schema Workspace · One site, one run, from crawl to publication</p></div></footer>
+  <footer class="footer"><div class="container"><p>Schematic · One site, one run, from crawl to publication</p></div></footer>
 </body>
 </html>

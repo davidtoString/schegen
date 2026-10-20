@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><%= title %> - WordPress Schema Generator</title>
+  <title><%= title %> · Schematic</title>
   <link rel="stylesheet" href="/css/style.css">
   <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
   <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
@@ -12,7 +12,7 @@
 <body>
   <header class="header">
     <div class="container">
-      <h1 class="logo"><img src="/img/favicon.svg" class="logo-mark" alt="">Schema Generator</h1>
+      <h1 class="logo"><img src="/img/favicon.svg" class="logo-mark" alt="">Schematic</h1>
       <nav class="nav">
         <% if (typeof currentUser !== 'undefined' && currentUser) { %>
         <form method="post" action="/logout" class="logout-form">
@@ -38,7 +38,7 @@
       </div>
 
       <h3>1. Connect a site</h3>
-      <p>Download the <strong>Workspace Connector</strong> plugin from the toolbar, install and activate it on the WordPress site. Click <strong>Add site</strong> and enter the WordPress URL and an Application Password (WordPress → Users → Profile → Application Passwords). The connector is what makes replace/remove of existing schema reversible.</p>
+      <p>Download the <strong>Schematic Connector</strong> plugin from the toolbar, install and activate it on the WordPress site. Click <strong>Add site</strong> and enter the WordPress URL and an Application Password (WordPress → Users → Profile → Application Passwords). The connector is what makes replace/remove of existing schema reversible.</p>
       <p class="muted">Optionally set a <strong>default schema image</strong> in site settings — used only on pages that don't have their own image.</p>
 
       <h3>2. Save your AI key</h3>
@@ -46,9 +46,9 @@
 
       <h3>3. Work through the wizard</h3>
       <ul>
-        <li><strong>Pages</strong> — click <strong>Crawl site</strong> to discover pages (sitemap, WordPress discovery, or pasted URLs), then check which ones to work with.</li>
+        <li><strong>Pages</strong> — click <strong>Crawl site</strong> to discover pages (WordPress, sitemap, homepage links, or pasted URLs), then check which ones to work with. If a site's firewall blocks a page, it is read through the WordPress API instead; anything still failing can be retried with <strong>Retry failed pages</strong>.</li>
         <li><strong>Action</strong> — choose <strong>Create new schema</strong> (AI generates JSON-LD) or <strong>Delete existing schema</strong> (removes app-published schema), for the pages you selected.</li>
-        <li><strong>Review</strong> — for Create, click Generate; for Delete, removal is already previewed. Either way, open <strong>Review</strong> on any page to see the exact before/after JSON-LD.</li>
+        <li><strong>Review</strong> — for Create, pick the <strong>schema types</strong> you want (or let the AI choose), use <strong>Types</strong> on a row to set one page differently, then click Generate; for Delete, removal is already previewed. Either way, open <strong>Review</strong> on any page to see the exact before/after JSON-LD.</li>
         <li><strong>Apply</strong> — check the acknowledgement box and click Apply. Nothing is written to WordPress before this step.</li>
       </ul>
       <p class="muted">The page list stays visible below the wizard at every step, and the step indicator lets you jump back to any step you've already completed.</p>
@@ -58,6 +58,8 @@
         <li><strong>Verify live pages</strong> — re-checks the actual public page for the JSON-LD.</li>
         <li><strong>Undo last change</strong> — restores the previous state, including the original Rank Math output, for selected pages.</li>
         <li><strong>Run history</strong> — keeps every past run for the site so you can revisit it.</li>
+        <li><strong>Header code plugin</strong> — download the JSON-LD as ready-to-paste <code>&lt;script&gt;</code> tags or JSON, or copy one page's from its Review window.</li>
+        <li><strong>Backups</strong> — every page's original schema, each generated version, and every WordPress change are saved on the server. <strong>Download all backups</strong> gets them as one file.</li>
       </ul>
 
       <div class="dialog-actions"><button type="button" class="btn btn-primary" id="close-help-footer">Got it</button></div>
