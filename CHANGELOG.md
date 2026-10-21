@@ -2,7 +2,10 @@
 
 All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
 
-## [3.2.1] - 2026-10-21
+## [3.2.2] - 2026-10-21
+
+### Removed
+- The "Use a different API key for this run" field in the Review step; AI runs always use the key saved in AI Settings (shown with its preview).
 
 ### Added
 - Up/down scroll navigator in the bottom-right corner; each arrow shows only when there is somewhere to go. Notices now appear just above it.

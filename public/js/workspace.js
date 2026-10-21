@@ -481,9 +481,8 @@ async function generateRun() {
   if (state.engine === 'rules' && !state.activeSite.profile?.name) { notify('Set up the business profile first. It is filled in for you; check it and save.', 'info'); return openProfile(); }
   try {
     await api(`/api/workspaces/runs/${state.activeRun.id}/generate`, {
-      method: 'POST', body: JSON.stringify({ urls, engine: state.engine, ...generationPlans(urls), provider: $('ai-provider').value, apiKey: $('ai-key').value, model: selectedModel('ai-model') || undefined })
+      method: 'POST', body: JSON.stringify({ urls, engine: state.engine, ...generationPlans(urls), provider: $('ai-provider').value, model: selectedModel('ai-model') || undefined })
     });
-    $('ai-key').value = '';
     state.activeRun.status = 'generating'; renderRun();
     notify('Generation started. This page will update as each URL completes.', 'success');
     // Auto-preview once generation finishes: read-only (no WordPress write), so it just
