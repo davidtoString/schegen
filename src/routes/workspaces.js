@@ -248,12 +248,15 @@ router.post('/runs/:id/generate', route(async (req, res) => {
             schema = built.schema;
             validation = schemas.validate(schema, page.pageData, { skipBusiness: true });
             validation.warnings.push(...built.missing.map(item => `Left out ${item}.`));
+            validation.errors.push(...built.errors); validation.valid = !validation.errors.length;
           } else {
             plan = planFor(page);
             updatePage(run.id, page.url, { schemaPlan: plan });
             const generated = await schemas.generatePlanned(pageData, aiOptions, plan);
-            schema = generated.schema;
+            const enforced = builder.enforceSiteRules(generated.schema, page.pageData, { siteUrl: site.url, profile: site.profile });
+            schema = enforced.schema;
             validation = schemas.validate(schema, page.pageData);
+            validation.errors.push(...enforced.errors); validation.valid = !validation.errors.length;
             if (generated.missing.length) validation.warnings.push(`The AI did not produce: ${generated.missing.join(', ')} (after a second attempt). Regenerate this page, or choose a stronger model.`);
           }
           backups.save(site, 'generated', page.url, { schema, plan, validation, engine });

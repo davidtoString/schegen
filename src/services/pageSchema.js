@@ -177,7 +177,7 @@ function validate(schema, page, options = {}) {
 
 // What each type needs, so a chosen type is built from the page instead of skipped.
 const TYPE_GUIDANCE = {
-  Service: 'Service: the service this page describes. name is the short plain service name a customer would search for (e.g. "AC Installation" or "Furnace Repair"), never the marketing headline or the SEO title with the business name; description from the page, serviceType, provider referencing the business/organization by @id, areaServed from cities named on the page, url = page URL). Any page describing work the business does qualifies.',
+  Service: 'Service: the service this page describes. name is the short plain service name a customer would search for (e.g. "AC Installation" or "Furnace Repair"), never the marketing headline or the SEO title with the business name; description from the page, serviceType, provider referencing the business/organization by @id, areaServed = only the one city or area this page is about, never a list of every area served, url = page URL). Any page describing work the business does qualifies.',
   FAQPage: 'FAQPage: mainEntity of Question/acceptedAnswer pairs taken verbatim from the page\'s visible FAQs (the faqs field). If faqs is empty, use only question-and-answer headings visible in the content.',
   LocalBusiness: 'LocalBusiness (or the most specific subtype, e.g. HVACBusiness, Plumber, Electrician): name, telephone, address and areaServed only as shown on the page or in existingSchema.',
   Organization: 'Organization: the business behind the site, with name, url, logo and telephone only as shown.',

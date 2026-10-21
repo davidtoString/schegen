@@ -50,10 +50,63 @@ function gaps(profile) {
   const recommended = [];
   if (!profile.telephone) recommended.push('phone');
   if (!profile.logo && !profile.image) recommended.push('logo or photo');
-  if (!profile.openingHours?.length) recommended.push('opening hours');
+  const hours = parseHours(profile.openingHours);
+  if (!hours.specification.length) missing.push('opening hours (required on service-area pages)');
+  if (hours.unreadable.length) missing.push(`opening hours Schematic can't read: "${hours.unreadable[0]}"`);
   if (!profile.areaServed?.length) recommended.push('service areas');
   if (!profile.sameAs?.length) recommended.push('social / review profile links');
   return { missing, recommended };
+}
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DAY_ALIASES = { mo: 0, mon: 0, monday: 0, tu: 1, tue: 1, tues: 1, tuesday: 1, we: 2, wed: 2, wednesday: 2, th: 3, thu: 3, thur: 3, thurs: 3, thursday: 3, fr: 4, fri: 4, friday: 4, sa: 5, sat: 5, saturday: 5, su: 6, sun: 6, sunday: 6 };
+function dayRange(text) {
+  const parts = text.toLowerCase().replace(/\./g, '').split(/\s*(?:-|–|—|to|through|thru)\s*/).map(part => DAY_ALIASES[part.trim()]);
+  if (parts.some(part => part === undefined)) return null;
+  if (parts.length === 1) return [DAYS[parts[0]]];
+  const days = [];
+  for (let day = parts[0]; ; day = (day + 1) % 7) { days.push(DAYS[day]); if (day === parts[1] || days.length > 7) break; }
+  return days;
+}
+function clock(text) {
+  const match = String(text).trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?$/);
+  if (!match) return null;
+  let hour = Number(match[1]); const minute = Number(match[2] || 0); const half = match[3]?.[0];
+  if (half === 'p' && hour < 12) hour += 12;
+  if (half === 'a' && hour === 12) hour = 0;
+  if (hour === 24 && !minute) return '23:59';
+  return hour <= 23 && minute <= 59 ? `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}` : null;
+}
+/**
+ * Opening hours as typed or pasted from Google ("Monday Open 24 hours", "Mon-Fri 8 AM–5 PM",
+ * "Saturday Closed", or schema.org's own "Mo-Fr 08:00-17:00") → OpeningHoursSpecification
+ * entries, days with identical times grouped. Lines it can't read are returned as `unreadable`.
+ */
+function parseHours(lines = []) {
+  const slots = new Map(); const unreadable = [];
+  for (const raw of lines) {
+    const line = String(raw).replace(/\s+/g, ' ').trim();
+    if (!line) continue;
+    const match = line.match(/^([A-Za-z.]+(?:\s*(?:-|–|—|to|through|thru)\s*[A-Za-z.]+)?(?:\s*,\s*[A-Za-z.]+(?:\s*(?:-|–|—)\s*[A-Za-z.]+)?)*)\s*:?\s+(.+)$/);
+    const days = match && match[1].split(/\s*,\s*/).map(dayRange);
+    if (!days || days.some(day => !day)) { unreadable.push(line); continue; }
+    const when = match[2].trim().toLowerCase();
+    if (/^closed$/.test(when)) continue;
+    let opens; let closes;
+    if (/^(open )?24 hours$|^24\/7$|^all day$/.test(when)) { opens = '00:00'; closes = '23:59'; }
+    else {
+      const times = when.split(/\s*(?:-|–|—|to)\s*/);
+      opens = times.length === 2 && clock(times[0]); closes = times.length === 2 && clock(times[1]);
+      if (!opens || !closes) { unreadable.push(line); continue; }
+    }
+    const key = `${opens}-${closes}`;
+    slots.set(key, [...new Set([...(slots.get(key) || []), ...days.flat()])]);
+  }
+  const specification = [...slots].map(([key, days]) => {
+    const [opens, closes] = key.split('-');
+    return { '@type': 'OpeningHoursSpecification', dayOfWeek: DAYS.filter(day => days.includes(day)), opens, closes };
+  });
+  return { specification, unreadable };
 }
 
 function mostCommon(values) {
@@ -164,4 +217,4 @@ function detect({ siteUrl, homepageHtml, siteName, pages = [] }) {
   });
 }
 
-module.exports = { BUSINESS_TYPES, normalize, gaps, detect, cityFromTitle, brandFromTitles };
+module.exports = { BUSINESS_TYPES, normalize, gaps, detect, parseHours, cityFromTitle, brandFromTitles };

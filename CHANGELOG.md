@@ -2,6 +2,13 @@
 
 All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
 
+## [3.5.0] - 2026-10-21
+
+### Changed
+- **Service areaServed = the page's own area only** (title city, else a known area in the H1 or URL, else the business's city), for every site and both engines; AI output is corrected the same way.
+- **Opening hours** typed or pasted from Google ("Monday Open 24 hours", "Mon-Fri 8 AM-5 PM", "Saturday Closed", or schema.org format) become `openingHoursSpecification` on the business entity. Free-text hours are never output.
+- **Service-area pages must carry opening hours:** the business entity (with hours) is always on them, and they can't be published without hours. Missing or unreadable hours show as a gap on the profile card.
+
 ## [3.4.0] - 2026-10-21
 
 ### Changed

@@ -17,7 +17,8 @@ const SITE = 'https://stricklandhvac.com';
 const profile = profiles.normalize({
   type: 'HVACBusiness', name: 'Strickland Heating and Air', telephone: '(817) 476-1950',
   address: { streetAddress: '100 Main St', addressLocality: 'Fort Worth', addressRegion: 'TX', postalCode: '76107' },
-  areaServed: ['Fort Worth', 'Keller'], logo: 'https://stricklandhvac.com/logo.png'
+  areaServed: ['Fort Worth', 'Keller', 'North Richland Hills'], logo: 'https://stricklandhvac.com/logo.png',
+  openingHours: ['Monday Open 24 hours', 'Tuesday Open 24 hours', 'Wednesday Open 24 hours', 'Thursday Open 24 hours', 'Friday Open 24 hours', 'Saturday Open 24 hours', 'Sunday Open 24 hours']
 });
 const repairPage = {
   url: `${SITE}/furnace-services-fort-worth-tx/repair/`,
@@ -55,7 +56,9 @@ test('a service page gets business, website, page, breadcrumbs, service and FAQs
   assert.deepEqual(Object.keys(byType), ['HVACBusiness', 'WebSite', 'WebPage', 'BreadcrumbList', 'Service', 'FAQPage']);
   assert.equal(byType.Service.name, 'Furnace Repair');
   assert.deepEqual(byType.Service.provider, { '@id': `${SITE}/#business` });
-  assert.deepEqual(byType.Service.areaServed.map(area => area.name), ['Fort Worth', 'Keller']);
+  assert.deepEqual(byType.Service.areaServed, { '@type': 'City', name: 'Fort Worth, TX' }, 'only the page\'s own area');
+  assert.deepEqual(byType.HVACBusiness.openingHoursSpecification, [{ '@type': 'OpeningHoursSpecification', dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], opens: '00:00', closes: '23:59' }]);
+  assert.equal(byType.HVACBusiness.openingHours, undefined, 'free-text hours are never output');
   assert.deepEqual(byType.BreadcrumbList.itemListElement.map(item => item.name), ['Home', 'Furnace Services', 'Furnace Repair']);
   assert.equal(byType.FAQPage.mainEntity[0].acceptedAnswer.text, 'Yes, every major brand.');
   assert.equal(byType.HVACBusiness.address.postalCode, '76107');
@@ -72,7 +75,8 @@ test('service-area pages serve their own city; missing FAQs are reported, not in
   const page = { url: `${SITE}/service-areas/keller-tx-hvac-services/`, title: 'HVAC Services in Keller, TX | Strickland Heating and Air', content: 'x' };
   const { schema, missing, kind } = builder.build(page, { siteUrl: SITE, profile });
   assert.equal(kind, 'location');
-  assert.deepEqual(schema['@graph'].find(node => node['@type'] === 'Service').areaServed, [{ '@type': 'City', name: 'Keller, TX' }]);
+  assert.deepEqual(schema['@graph'].find(node => node['@type'] === 'Service').areaServed, { '@type': 'City', name: 'Keller, TX' });
+  assert.ok(schema['@graph'][0].openingHoursSpecification.length, 'service-area pages carry the hours');
   assert.ok(!schema['@graph'].some(node => node['@type'] === 'FAQPage'));
   assert.deepEqual(missing, ['FAQPage (no FAQs on this page)']);
 });
@@ -105,7 +109,7 @@ test('profile detection reads titles, homepage footer, phone, logo and social li
   assert.deepEqual(found.address, { streetAddress: '2700 W 7th St, Suite 100', addressLocality: 'Fort Worth', addressRegion: 'TX', postalCode: '76107', addressCountry: 'US' });
   assert.deepEqual(found.sameAs, ['https://www.facebook.com/strickland']);
   assert.ok(found.areaServed.includes('Keller') && found.areaServed.includes('Fort Worth'));
-  assert.deepEqual(profiles.gaps(found).missing, []);
+  assert.deepEqual(profiles.gaps(found).missing, ['opening hours (required on service-area pages)'], 'hours are not on this homepage, so they are flagged');
 });
 
 test('rules engine needs a saved profile, then builds pages with no AI key', async t => {
@@ -137,4 +141,40 @@ test('detection keeps an agency an Organization and turns link texts into city n
   assert.equal(agency.type, 'Organization');
   const beacon = profiles.detect({ siteUrl: 'https://b.test', pages: [{ url: 'https://b.test/a/', pageData: { title: 'AC Repair in Starkville, MS | Beacon', serviceAreas: ['Service Areas', 'West Point', 'HVAC Services in Columbus, MS', 'HVAC Services in the Golden Triangle'] } }] });
   assert.deepEqual(beacon.areaServed, ['West Point', 'Columbus', 'Starkville']);
+});
+
+test('opening hours: Google wording, ranges, closed days and schema.org format', () => {
+  const { specification, unreadable } = profiles.parseHours(['Mon-Fri 8 AM–5 PM', 'Saturday: 9am - 1pm', 'Sunday Closed', 'Mo-Fr 08:00-17:00', 'whenever']);
+  assert.deepEqual(specification, [
+    { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], opens: '08:00', closes: '17:00' },
+    { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Saturday'], opens: '09:00', closes: '13:00' }
+  ]);
+  assert.deepEqual(unreadable, ['whenever']);
+  assert.ok(profiles.gaps({ ...profile, openingHours: ['whenever'] }).missing.some(gap => /can't read/.test(gap)));
+  assert.ok(profiles.gaps({ ...profile, openingHours: [] }).missing.some(gap => /opening hours/.test(gap)));
+});
+
+test('a service page serves only its own area: title city, else a known area in the H1 or URL, else the home city', () => {
+  const area = page => builder.pageArea({ url: `${SITE}/x/`, ...page }, profile);
+  assert.equal(area({ title: 'AC Repair in Keller, TX | Strickland' }), 'Keller, TX');
+  assert.equal(area({ title: 'AC Repair | Strickland', headings: [{ level: 'h1', text: 'Fast AC repair for North Richland Hills homes' }] }), 'North Richland Hills, TX');
+  assert.equal(area({ title: 'AC Repair | Strickland', url: `${SITE}/ac-repair-keller/` }), 'Keller, TX');
+  assert.equal(area({ title: 'AC Repair | Strickland' }), 'Fort Worth, TX');
+});
+
+test('service-area pages without opening hours cannot be published', () => {
+  const page = { url: `${SITE}/service-areas/keller-tx-hvac-services/`, title: 'HVAC Services in Keller, TX | Strickland', content: 'x' };
+  const { errors } = builder.build(page, { siteUrl: SITE, profile: { ...profile, openingHours: [] } });
+  assert.match(errors[0], /opening hours/);
+  assert.deepEqual(builder.build(page, { siteUrl: SITE, profile }).errors, []);
+});
+
+test('AI output gets the same site rules: own-area Service and the business with hours on service-area pages', () => {
+  const page = { url: `${SITE}/service-areas/keller-tx-hvac-services/`, title: 'HVAC Services in Keller, TX | Strickland', content: 'x' };
+  const ai = { '@context': 'https://schema.org', '@graph': [{ '@type': 'Service', name: 'HVAC Services', areaServed: ['Keller', 'Weatherford', 'Azle'] }] };
+  const { schema, errors, kind } = builder.enforceSiteRules(ai, page, { siteUrl: SITE, profile });
+  assert.equal(kind, 'location');
+  assert.deepEqual(errors, []);
+  assert.deepEqual(schema['@graph'].find(node => node['@type'] === 'Service').areaServed, { '@type': 'City', name: 'Keller, TX' });
+  assert.ok(schema['@graph'].find(node => node['@type'] === 'HVACBusiness').openingHoursSpecification.length);
 });

@@ -1,4 +1,4 @@
-const { cityFromTitle } = require('./businessProfile');
+const { cityFromTitle, parseHours } = require('./businessProfile');
 
 /**
  * Rule-based schema: the business profile + page rules + crawled page → JSON-LD, with no AI.
@@ -66,6 +66,27 @@ function clean(value) {
   return value === '' || value === null ? undefined : value;
 }
 
+const slug = text => String(text || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+/**
+ * The one area a page is about: the city in its title ("… in Keller, TX"), else a known
+ * area (profile service areas or home city) named in its H1 or URL, else the business's
+ * own city. Service.areaServed is always just this, never the business's whole list.
+ */
+function pageArea(pageData, profile = {}) {
+  const region = profile.address?.addressRegion;
+  const label = (city, state) => (state || region ? `${city}, ${state || region}` : city);
+  const fromTitle = cityFromTitle(pageData.title);
+  if (fromTitle) return label(fromTitle.city, fromTitle.state);
+  const known = [...new Set([...(profile.areaServed || []), profile.address?.addressLocality].filter(Boolean))]
+    .sort((a, b) => b.length - a.length); // "North Richland Hills" before "Richland"
+  const h1 = (pageData.headings || []).find(h => h.level === 'h1')?.text || '';
+  const path = (() => { try { return new URL(pageData.url).pathname.toLowerCase(); } catch { return ''; } })();
+  const named = known.find(city => new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(h1))
+    || known.find(city => path.includes(slug(city)));
+  if (named) return label(named);
+  return profile.address?.addressLocality ? label(profile.address.addressLocality) : '';
+}
+
 function businessNode(profile, origin) {
   const a = profile.address || {};
   const hasAddress = a.streetAddress || a.addressLocality || a.postalCode;
@@ -75,7 +96,8 @@ function businessNode(profile, origin) {
     description: profile.description, telephone: profile.telephone, email: profile.email,
     logo: image(logo), image: profile.image || logo, priceRange: profile.priceRange,
     address: hasAddress ? { '@type': 'PostalAddress', ...a } : undefined,
-    openingHours: profile.openingHours, areaServed: profile.areaServed?.map(cityNode), sameAs: profile.sameAs
+    openingHoursSpecification: parseHours(profile.openingHours).specification,
+    areaServed: profile.areaServed?.map(cityNode), sameAs: profile.sameAs
   };
 }
 
@@ -124,8 +146,8 @@ function build(pageData, { siteUrl, profile, rules, plan, pages = [] }) {
 
   if (wanted.includes('Service')) {
     const name = serviceName(pageData.title, pageData.headings?.find(h => h.level === 'h1')?.text);
-    const city = cityFromTitle(pageData.title);
-    const areaServed = kind === 'location' && city ? [cityNode(`${city.city}, ${city.state}`)] : profile.areaServed?.map(cityNode);
+    const area = pageArea(pageData, profile);
+    const areaServed = area ? cityNode(area) : undefined;
     if (name) {
       graph.push({ '@type': 'Service', '@id': ids.service, name, serviceType: name, description: pageData.description, url, provider: { '@id': ids.business }, areaServed, image: pageData.featuredImage || undefined, mainEntityOfPage: { '@id': ids.page } });
       pageNode.mainEntity = { '@id': ids.service };
@@ -144,7 +166,41 @@ function build(pageData, { siteUrl, profile, rules, plan, pages = [] }) {
       publisher: { '@id': ids.business }, mainEntityOfPage: { '@id': ids.page }
     });
   }
-  return { schema: { '@context': 'https://schema.org', '@graph': graph.map(clean) }, missing, kind };
+  const schema = { '@context': 'https://schema.org', '@graph': graph.map(clean) };
+  return { schema, missing, kind, errors: siteRuleErrors(schema, kind) };
+}
+
+const isBusinessNode = node => [].concat(node?.['@type'] || []).some(type => type === 'Organization' || /Business|Contractor|Plumber|Electrician|Locksmith|Painter|Store|Restaurant|Dentist|Service$/.test(type) && type !== 'Service');
+
+// Rules every page must meet, whichever engine built it.
+function siteRuleErrors(schema, kind) {
+  const errors = [];
+  if (kind === 'location') {
+    const business = (schema['@graph'] || []).find(isBusinessNode);
+    if (!business?.openingHoursSpecification?.length && !business?.openingHours) errors.push('Service-area pages need opening hours. Add them in Business profile (for example "Monday-Friday 8 AM-5 PM").');
+  }
+  return errors;
+}
+
+/**
+ * Apply the site rules to a graph from any engine (used on AI output): each Service serves only
+ * the page's own area, and the business carries the profile's opening hours. A service-area
+ * page always gets the business entity, so its hours are on the page.
+ */
+function enforceSiteRules(schema, pageData, { siteUrl, profile }) {
+  const kind = classify({ url: pageData.url, pageData }, siteUrl);
+  if (!profile?.name) return { schema, kind, errors: siteRuleErrors(schema, kind) };
+  const graph = [...(schema['@graph'] || [])];
+  const area = pageArea(pageData, profile);
+  for (const node of graph) {
+    if ([].concat(node['@type'] || []).includes('Service')) { if (area) node.areaServed = cityNode(area); else delete node.areaServed; }
+  }
+  const hours = parseHours(profile.openingHours).specification;
+  let business = graph.find(isBusinessNode);
+  if (business && hours.length) { business.openingHoursSpecification = hours; delete business.openingHours; }
+  if (!business && kind === 'location') graph.unshift(clean(businessNode(profile, new URL(siteUrl).origin)));
+  const result = { ...schema, '@graph': graph };
+  return { schema: result, kind, errors: siteRuleErrors(result, kind) };
 }
 
 /**
@@ -183,4 +239,4 @@ function completeness(schema, { skipBusiness = false } = {}) {
   return { errors: [...new Set(errors)], warnings: [...new Set(warnings)] };
 }
 
-module.exports = { BUILDABLE, KINDS, rulesFor, classify, build, completeness, serviceName };
+module.exports = { BUILDABLE, KINDS, rulesFor, classify, build, completeness, serviceName, pageArea, enforceSiteRules };
