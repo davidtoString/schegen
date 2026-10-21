@@ -481,3 +481,15 @@ details > summary { cursor: pointer; color: var(--text-2); font-size: .84rem; ma
 .diff-line.same { color: var(--text-2); }
 #schema-dialog { width: min(1100px, calc(100vw - 2rem)); }
 @media (max-width: 640px) { .compare-types { grid-template-columns: 1fr; } }
+/* Run history selection and delete */
+.history-actions { display: flex; align-items: center; gap: .75rem; }
+.history-actions .toggle-row { margin: 0; font-size: .82rem; color: var(--text-2); }
+.history-actions .btn { height: 30px; font-size: .8rem; }
+.history-row { grid-template-columns: auto minmax(0, 1fr) auto auto; gap: .9rem; cursor: default; }
+.history-row > input { margin: 0; }
+.history-open { display: grid; grid-template-columns: minmax(150px, auto) 1fr; gap: 1rem; align-items: center; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: .84rem; text-align: left; cursor: pointer; }
+.history-open > span:nth-child(2) { color: var(--text-2); }
+.history-open:hover > span:first-child { text-decoration: underline; }
+.history-delete:hover:not(:disabled) { background: var(--red-bg); color: var(--red); }
+.history-delete:disabled { opacity: .35; cursor: not-allowed; }
+@media (max-width: 640px) { .history-open { grid-template-columns: 1fr; gap: 0; } .history-actions .toggle-row { display: none !important; } }

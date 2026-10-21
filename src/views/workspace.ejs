@@ -120,7 +120,12 @@
       </section>
 
       <section class="card history-card">
-        <div class="section-heading"><h3>Run history</h3></div>
+        <div class="section-heading"><h3>Run history</h3>
+          <div class="history-actions" id="history-actions" hidden>
+            <label class="toggle-row"><input type="checkbox" id="history-select-all">Select all</label>
+            <button type="button" class="btn btn-danger" id="delete-runs" disabled>Delete selected</button>
+          </div>
+        </div>
         <div id="run-history"><p class="muted">No recorded runs.</p></div>
       </section>
     </section>

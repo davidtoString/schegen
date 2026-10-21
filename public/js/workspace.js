@@ -112,6 +112,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('close-schema').addEventListener('click', () => $('schema-dialog').close());
   $('recrawl-failed').addEventListener('click', recrawlFailed);
+  $('history-select-all').addEventListener('change', event => { document.querySelectorAll('.history-select').forEach(box => { box.checked = event.target.checked; }); updateHistorySelection(); });
+  $('delete-runs').addEventListener('click', () => deleteRuns([...document.querySelectorAll('.history-select:checked')].map(box => box.value)));
   $('apply-types').addEventListener('click', () => {
     const urls = selectedUrls();
     if (!urls.length) return notify('Select pages first.', 'error');
@@ -716,24 +718,64 @@ async function refreshHistory() {
   const body = await api(`/api/workspaces/sites/${state.activeSite.id}`); renderHistory(body.runs);
 }
 
+const TRASH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>';
 function renderHistory(runs) {
+  state.historyRuns = runs;
   const container = $('run-history'); container.replaceChildren();
-  if (!runs.length) { const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'No recorded runs.'; container.append(p); return; }
+  $('history-actions').hidden = !runs.length;
+  $('history-select-all').checked = false;
+  if (!runs.length) { const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'No recorded runs.'; container.append(p); updateHistorySelection(); return; }
   runs.forEach(run => {
-    const button = document.createElement('button'); button.className = `history-row${state.activeRun?.id === run.id ? ' active' : ''}`;
+    const row = document.createElement('div'); row.className = `history-row${state.activeRun?.id === run.id ? ' active' : ''}`;
+    const pick = document.createElement('input'); pick.type = 'checkbox'; pick.className = 'history-select'; pick.value = run.id;
+    pick.setAttribute('aria-label', `Select run from ${new Date(run.createdAt).toLocaleString()}`);
+    pick.addEventListener('change', updateHistorySelection);
+    const open = document.createElement('button'); open.type = 'button'; open.className = 'history-open';
     const date = document.createElement('span'); date.textContent = new Date(run.createdAt).toLocaleString();
-    const summary = document.createElement('span'); summary.textContent = run.summary.removed ? `${run.summary.removed}/${run.summary.discovered} removed` : `${run.summary.generated}/${run.summary.discovered} generated · ${run.summary.published} published`;
-    const status = document.createElement('span'); status.className = `status-badge ${run.status}`; status.textContent = run.status.replaceAll('_', ' ');
-    button.append(date, summary, status); button.addEventListener('click', async () => {
+    const summary = document.createElement('span'); summary.textContent = `${run.summary.generated}/${run.summary.discovered} with schema · ${run.summary.published} published`;
+    open.append(date, summary);
+    open.addEventListener('click', async () => {
       try {
         window.clearInterval(state.poller);
         const body = await api(`/api/workspaces/runs/${run.id}`); state.activeRun = body.run;
         resetWizard();
         renderRun(); renderHistory(runs);
-        if (['discovering', 'crawling', 'generating', 'publishing'].includes(body.run.status)) startPolling();
+        if (BUSY.includes(body.run.status)) startPolling();
       } catch (error) { notify(error.message, 'error'); }
-    }); container.append(button);
+    });
+    const status = document.createElement('span'); status.className = `status-badge ${run.status}`; status.textContent = RUN_STATUS[run.status] || run.status.replaceAll('_', ' ');
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'icon-button history-delete'; remove.innerHTML = TRASH_ICON;
+    remove.title = 'Delete this run'; remove.setAttribute('aria-label', `Delete run from ${new Date(run.createdAt).toLocaleString()}`);
+    remove.disabled = BUSY.includes(run.status);
+    remove.addEventListener('click', () => deleteRuns([run.id]));
+    row.append(pick, open, status, remove); container.append(row);
   });
+  updateHistorySelection();
+}
+function updateHistorySelection() {
+  const boxes = [...document.querySelectorAll('.history-select')];
+  const picked = boxes.filter(box => box.checked).length;
+  $('delete-runs').disabled = !picked;
+  $('delete-runs').textContent = picked ? `Delete ${picked} selected` : 'Delete selected';
+  $('history-select-all').checked = boxes.length > 0 && picked === boxes.length;
+  $('history-select-all').indeterminate = picked > 0 && picked < boxes.length;
+}
+async function deleteRuns(ids) {
+  const runs = (state.historyRuns || []).filter(run => ids.includes(run.id));
+  if (runs.some(run => BUSY.includes(run.status))) return notify('Wait for the running step to finish before deleting it.', 'info');
+  const undoable = runs.reduce((sum, run) => sum + (run.undoable || 0), 0);
+  const warning = undoable ? `\n\n${undoable} published page(s) in ${runs.length === 1 ? 'this run' : 'these runs'} stay published, but can no longer be undone from Schematic. Backup files are kept.` : '\n\nPublished schema and backup files are not affected.';
+  if (!window.confirm(`Delete ${runs.length === 1 ? 'this run' : `${runs.length} runs`} from the history? This can't be undone.${warning}`)) return;
+  try {
+    const body = await api(`/api/workspaces/sites/${state.activeSite.id}/runs/delete`, { method: 'POST', body: JSON.stringify({ ids }) });
+    if (state.activeRun && ids.includes(state.activeRun.id)) {
+      window.clearInterval(state.poller);
+      state.activeRun = body.runs[0] ? (await api(`/api/workspaces/runs/${body.runs[0].id}`)).run : null;
+      resetWizard(); renderRun();
+    }
+    renderHistory(body.runs);
+    notify(`Deleted ${body.deleted} run${body.deleted === 1 ? '' : 's'}.`, 'success');
+  } catch (error) { notify(error.message, 'error'); }
 }
 
 function renderProfile(site) {

@@ -36,7 +36,8 @@ function summary(pages) { return {
   discovered: pages.length, crawled: pages.filter(p => p.pageData).length,
   generated: pages.filter(p => p.schema && p.validation?.valid).length,
   failed: pages.filter(p => ['failed', 'invalid', 'publish_failed'].includes(p.status)).length,
-  published: pages.filter(p => p.status === 'published').length,
+  // Saved to WordPress counts as published even while the site's cache still shows the old page.
+  published: pages.filter(p => ['published', 'verification_pending'].includes(p.status)).length,
   removed: pages.filter(p => p.status === 'schema_removed').length
 }; }
 function updatePage(id, url, values) {
@@ -201,6 +202,17 @@ router.post('/runs/:id/recrawl', route(async (req, res) => {
     finally { busySites.delete(site.id); }
   });
   res.status(202).json({ success: true, runId: run.id });
+}));
+// Delete one or more runs of a site (run history). Not while anything runs on the site.
+router.post('/sites/:id/runs/delete', route(async (req, res) => {
+  const site = siteFor(req.params.id);
+  const ids = Array.isArray(req.body.ids) ? [...new Set(req.body.ids.map(String))] : [];
+  if (!ids.length) fail('Choose at least one run to delete.');
+  const runs = store.listRuns(site.id, Number.MAX_SAFE_INTEGER).filter(run => ids.includes(run.id));
+  if (runs.length !== ids.length) fail('Some runs were not found for this site.', 404);
+  if (busySites.has(site.id) || runs.some(run => ['discovering', 'crawling', 'generating', 'publishing'].includes(run.status))) fail('Wait for the running step to finish before deleting runs.', 409);
+  const deleted = store.deleteRuns(site.id, ids);
+  res.json({ success: true, deleted, runs: store.listRunSummaries(site.id) });
 }));
 router.get('/runs', (req, res) => res.json({ success: true, runs: store.listRunSummaries(req.query.siteId) }));
 router.get('/runs/:id', route(async (req, res) => res.json({ success: true, run: runView(runFor(req.params.id)) })));

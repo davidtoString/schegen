@@ -216,7 +216,23 @@ function listRuns(siteId, limit = 25) {
 
 // Run history without page data: crawled pages carry full page text, so whole runs get large fast.
 function listRunSummaries(siteId, limit = 25) {
-  return listRuns(siteId, limit).map(({ pages, lastPublish, ...run }) => ({ ...run, pageCount: pages.length }));
+  return listRuns(siteId, limit).map(({ pages, lastPublish, ...run }) => ({
+    ...run, pageCount: pages.length,
+    // Recount for runs stored before pages awaiting the live check counted as published.
+    summary: { ...run.summary, published: pages.filter(page => ['published', 'verification_pending'].includes(page.status)).length },
+    // Published pages whose Undo depends on this run's records.
+    undoable: pages.filter(page => page.writeReceipt && !page.writeReceipt.rolledBack).length
+  }));
+}
+
+// Remove a site's runs by id. Backups on disk and anything already published are untouched.
+function deleteRuns(siteId, ids) {
+  const wanted = new Set(ids);
+  const data = read();
+  const before = data.runs.length;
+  data.runs = data.runs.filter(run => !(run.siteId === siteId && wanted.has(run.id)));
+  if (data.runs.length !== before) write(data);
+  return before - data.runs.length;
 }
 
 const AI_PROVIDERS = ['openai', 'gemini'];
@@ -272,7 +288,7 @@ function resolveAIOptions(options = {}) {
 module.exports = {
   keyHint, aiSettings, saveAISettings, resolveAIOptions,
   createSite, updateSite, setProfile, getSite, listSites, deleteSite, updateConnectionStatus,
-  createRun, updateRun, getRun, listRuns, listRunSummaries
+  createRun, updateRun, getRun, listRuns, listRunSummaries, deleteRuns
 };
 
 // A stopped process cannot resume an in-memory operation. Preserve results and allow a retry.

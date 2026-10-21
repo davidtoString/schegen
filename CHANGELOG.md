@@ -2,6 +2,14 @@
 
 All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
 
+## [3.6.0] - 2026-10-21
+
+### Added
+- **Delete runs from Run history**, one at a time (trash button on each row) or in bulk (checkboxes, Select all, Delete selected). Published schema and backup files are kept; the confirmation warns when published pages in the runs can then no longer be undone. Runs in progress can't be deleted.
+
+### Fixed
+- Pages saved to WordPress but still waiting on the site's cache now count as published in run summaries.
+
 ## [3.5.1] - 2026-10-21
 
 ### Fixed
