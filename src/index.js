@@ -39,6 +39,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/css', express.static(path.join(__dirname, '../public/css')));
 app.use('/img', express.static(path.join(__dirname, '../public/img')));
 
+// Shown in the sidebar and on the login page.
+app.locals.appVersion = require('../package.json').version;
+
 // Asset fingerprint: views add ?v=<hash> to CSS/JS URLs, so each deploy busts browser and
 // Cloudflare caches (Cloudflare tells browsers to keep static files for hours).
 app.locals.assetVersion = require('crypto').createHash('sha1')

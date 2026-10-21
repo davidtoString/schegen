@@ -493,3 +493,6 @@ details > summary { cursor: pointer; color: var(--text-2); font-size: .84rem; ma
 .history-delete:hover:not(:disabled) { background: var(--red-bg); color: var(--red); }
 .history-delete:disabled { opacity: .35; cursor: not-allowed; }
 @media (max-width: 640px) { .history-open { grid-template-columns: 1fr; gap: 0; } .history-actions .toggle-row { display: none !important; } }
+/* Version label */
+.app-version { margin: .6rem 0 0; padding: 0 .6rem; color: var(--text-3); font-size: .72rem; }
+.login-card .app-version { margin-top: 1.5rem; padding: 0; text-align: center; }

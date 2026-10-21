@@ -2,6 +2,11 @@
 
 All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
 
+## [3.7.1] - 2026-10-22
+
+### Added
+- The app version is shown at the bottom of the sidebar and on the login page.
+
 ## [3.7.0] - 2026-10-21
 
 ### Added
