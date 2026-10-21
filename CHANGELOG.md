@@ -2,6 +2,11 @@
 
 All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
 
+## [3.5.1] - 2026-10-21
+
+### Fixed
+- On service and service-area pages, **every** `areaServed` (the business's too, which AI fills with every area) is now the page's own area. Before, only Service nodes were narrowed, so a Saginaw page without a Service still listed all areas on the business. Home, about, contact and listing pages keep the full list.
+
 ## [3.5.0] - 2026-10-21
 
 ### Changed

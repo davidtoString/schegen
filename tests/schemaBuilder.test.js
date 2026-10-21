@@ -178,3 +178,14 @@ test('AI output gets the same site rules: own-area Service and the business with
   assert.deepEqual(schema['@graph'].find(node => node['@type'] === 'Service').areaServed, { '@type': 'City', name: 'Keller, TX' });
   assert.ok(schema['@graph'].find(node => node['@type'] === 'HVACBusiness').openingHoursSpecification.length);
 });
+
+test('on service and service-area pages every areaServed is the page area, the business included; other pages keep the full list', () => {
+  const saginaw = { url: `${SITE}/service-areas/saginaw-tx-hvac-services/`, title: 'HVAC Services in Saginaw, TX | Strickland', content: 'x' };
+  const built = builder.build(saginaw, { siteUrl: SITE, profile });
+  assert.deepEqual(built.schema['@graph'][0].areaServed, { '@type': 'City', name: 'Saginaw, TX' });
+  const ai = { '@graph': [{ '@type': 'FAQPage', mainEntity: [] }, { '@type': 'HVACBusiness', name: 'Strickland', areaServed: [{ '@type': 'City', name: 'Saginaw' }, { '@type': 'City', name: 'Keller' }, { '@type': 'City', name: 'Azle' }] }] };
+  const fixed = builder.enforceSiteRules(ai, saginaw, { siteUrl: SITE, profile }).schema;
+  assert.deepEqual(fixed['@graph'][1].areaServed, { '@type': 'City', name: 'Saginaw, TX' });
+  const home = builder.build({ url: `${SITE}/`, title: 'Strickland Heating and Air', content: 'x' }, { siteUrl: SITE, profile });
+  assert.equal(home.schema['@graph'][0].areaServed.length, 3, 'the home page keeps every area');
+});

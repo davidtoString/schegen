@@ -127,7 +127,10 @@ function build(pageData, { siteUrl, profile, rules, plan, pages = [] }) {
   const wanted = plan?.types?.length ? plan.types.filter(type => BUILDABLE.includes(type)) : rulesFor(rules)[kind];
   const url = pageData.url;
   const ids = { business: `${origin}/#business`, website: `${origin}/#website`, page: `${url}#webpage`, breadcrumb: `${url}#breadcrumb`, service: `${url}#service`, faq: `${url}#faq`, article: `${url}#article` };
-  const graph = [businessNode(profile, origin), {
+  // On pages about one area (service and service-area pages) every areaServed, the business's
+  // included, is that area; pages about the whole business keep the full list.
+  const area = AREA_KINDS.includes(kind) ? pageArea(pageData, profile) : '';
+  const graph = [{ ...businessNode(profile, origin), ...(area ? { areaServed: cityNode(area) } : {}) }, {
     '@type': 'WebSite', '@id': ids.website, url: `${origin}/`, name: profile.name, publisher: { '@id': ids.business }, inLanguage: pageData.language || undefined
   }];
   const missing = [];
@@ -146,8 +149,8 @@ function build(pageData, { siteUrl, profile, rules, plan, pages = [] }) {
 
   if (wanted.includes('Service')) {
     const name = serviceName(pageData.title, pageData.headings?.find(h => h.level === 'h1')?.text);
-    const area = pageArea(pageData, profile);
-    const areaServed = area ? cityNode(area) : undefined;
+    const serviceArea = area || pageArea(pageData, profile);
+    const areaServed = serviceArea ? cityNode(serviceArea) : undefined;
     if (name) {
       graph.push({ '@type': 'Service', '@id': ids.service, name, serviceType: name, description: pageData.description, url, provider: { '@id': ids.business }, areaServed, image: pageData.featuredImage || undefined, mainEntityOfPage: { '@id': ids.page } });
       pageNode.mainEntity = { '@id': ids.service };
@@ -170,6 +173,7 @@ function build(pageData, { siteUrl, profile, rules, plan, pages = [] }) {
   return { schema, missing, kind, errors: siteRuleErrors(schema, kind) };
 }
 
+const AREA_KINDS = ['service', 'location'];
 const isBusinessNode = node => [].concat(node?.['@type'] || []).some(type => type === 'Organization' || /Business|Contractor|Plumber|Electrician|Locksmith|Painter|Store|Restaurant|Dentist|Service$/.test(type) && type !== 'Service');
 
 // Rules every page must meet, whichever engine built it.
@@ -192,9 +196,16 @@ function enforceSiteRules(schema, pageData, { siteUrl, profile }) {
   if (!profile?.name) return { schema, kind, errors: siteRuleErrors(schema, kind) };
   const graph = [...(schema['@graph'] || [])];
   const area = pageArea(pageData, profile);
-  for (const node of graph) {
-    if ([].concat(node['@type'] || []).includes('Service')) { if (area) node.areaServed = cityNode(area); else delete node.areaServed; }
-  }
+  // Service always serves the page's area; on service and service-area pages so does every
+  // other node with an areaServed (typically the business, which AI fills with every area).
+  const pageWide = AREA_KINDS.includes(kind);
+  const walk = value => {
+    if (Array.isArray(value)) return value.forEach(walk);
+    if (!value || typeof value !== 'object') return;
+    if ((pageWide || [].concat(value['@type'] || []).includes('Service')) && value.areaServed !== undefined) { if (area) value.areaServed = cityNode(area); else delete value.areaServed; }
+    Object.values(value).forEach(walk);
+  };
+  walk(graph);
   const hours = parseHours(profile.openingHours).specification;
   let business = graph.find(isBusinessNode);
   if (business && hours.length) { business.openingHoursSpecification = hours; delete business.openingHours; }
