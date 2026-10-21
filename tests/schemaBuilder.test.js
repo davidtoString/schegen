@@ -84,8 +84,8 @@ test('service-area pages serve their own city; missing FAQs are reported, not in
 test('page rules and per-page Types decide what gets built', () => {
   const noFaq = builder.build(repairPage, { siteUrl: SITE, profile, rules: { service: ['Service'] } });
   assert.deepEqual(noFaq.schema['@graph'].map(node => node['@type']).slice(2), ['WebPage', 'Service']);
-  const override = builder.build(repairPage, { siteUrl: SITE, profile, plan: { types: ['FAQPage'] } });
-  assert.deepEqual(override.schema['@graph'].map(node => node['@type']).slice(2), ['WebPage', 'FAQPage']);
+  const override = builder.build(repairPage, { siteUrl: SITE, profile, plan: { types: ['HVACBusiness', 'FAQPage'] } });
+  assert.deepEqual(override.schema['@graph'].map(node => node['@type']), ['HVACBusiness', 'WebSite', 'WebPage', 'FAQPage'], 'the profile\'s business type selects the business');
 });
 
 test('completeness flags what Google needs', () => {
@@ -124,8 +124,8 @@ test('rules engine needs a saved profile, then builds pages with no AI key', asy
   store.updateRun(run.id, { status: 'ready', pages: [{ url: repairPage.url, status: 'crawled', pageData: repairPage }] });
   assert.match((await call(`/runs/${run.id}/generate`, 'POST', { urls: [repairPage.url] })).error, /business profile/);
   assert.equal((await call(`/sites/${site.id}/profile`, 'PUT', { profile: { name: '' } })).code, 400);
-  const saved = await call(`/sites/${site.id}/profile`, 'PUT', { profile, rules: { service: ['Service', 'FAQPage', 'Bogus'] } });
-  assert.deepEqual(saved.site.rules.service, ['Service', 'FAQPage']);
+  const saved = await call(`/sites/${site.id}/profile`, 'PUT', { profile, rules: { service: ['LocalBusiness', 'Service', 'FAQPage', 'Bogus'] } });
+  assert.deepEqual(saved.site.rules.service, ['LocalBusiness', 'Service', 'FAQPage']);
   assert.deepEqual(saved.site.profileGaps.missing, []);
   assert.equal((await call(`/runs/${run.id}/generate`, 'POST', { urls: [repairPage.url] })).code, 202);
   for (let i = 0; i < 100 && store.getRun(run.id).status === 'generating'; i++) await new Promise(resolve => setTimeout(resolve, 10));
@@ -188,4 +188,18 @@ test('on service and service-area pages every areaServed is the page area, the b
   assert.deepEqual(fixed['@graph'][1].areaServed, { '@type': 'City', name: 'Saginaw, TX' });
   const home = builder.build({ url: `${SITE}/`, title: 'Strickland Heating and Air', content: 'x' }, { siteUrl: SITE, profile });
   assert.equal(home.schema['@graph'][0].areaServed.length, 3, 'the home page keeps every area');
+});
+
+test('the business entity is a selectable rule type: on by default, kept for old rules, required on service-area pages', () => {
+  assert.ok(builder.rulesFor(undefined).service.includes('LocalBusiness'), 'on by default');
+  assert.ok(builder.rulesFor({ service: ['Service'] }).service.includes('LocalBusiness'), 'rules saved before it was selectable keep it');
+  const saved = builder.saveRules({ service: ['Service', 'FAQPage'], location: ['FAQPage'] });
+  assert.deepEqual(builder.rulesFor(saved).service, ['Service', 'FAQPage'], 'switched off when unticked in new rules');
+  assert.deepEqual(builder.rulesFor(saved).location, ['LocalBusiness', 'FAQPage'], 'service-area pages always keep it');
+
+  const off = builder.build(repairPage, { siteUrl: SITE, profile, rules: saved });
+  assert.ok(!off.schema['@graph'].some(node => node['@type'] === 'HVACBusiness'));
+  assert.ok(!JSON.stringify(off.schema).includes('#business'), 'no links left pointing at the missing business');
+  const keller = builder.build({ url: `${SITE}/service-areas/keller-tx-hvac-services/`, title: 'HVAC Services in Keller, TX | Strickland', content: 'x' }, { siteUrl: SITE, profile, rules: saved, plan: { types: ['FAQPage'] } });
+  assert.equal(keller.schema['@graph'][0]['@type'], 'HVACBusiness', 'even a Types override cannot remove it from service-area pages');
 });

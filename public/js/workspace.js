@@ -155,7 +155,7 @@ async function copyText(text) {
 async function loadSchemaTypes() {
   const body = await api('/api/workspaces/schema-types');
   state.schemaTypes = body.types;
-  state.meta = { kinds: body.kinds, buildable: body.buildable, businessTypes: body.businessTypes, moreTypes: body.moreTypes };
+  state.meta = { kinds: body.kinds, buildable: body.buildable, businessTypes: body.businessTypes, moreTypes: body.moreTypes, businessRequired: body.businessRequired || [] };
   $('business-types').replaceChildren(...body.businessTypes.map(type => Object.assign(document.createElement('option'), { value: type })));
   renderTypeOptions('type-options', []);
   renderMoreTypes('type-more', []);
@@ -176,12 +176,14 @@ function applyEngine(engine) {
 function availableTypes() {
   return state.engine === 'rules' ? state.schemaTypes.filter(item => state.meta.buildable.includes(item.type)) : state.schemaTypes;
 }
+// The business option shows each site's own type from its profile (HVACBusiness, Plumber, …).
+function businessLabel() { return state.activeSite?.profile?.type || 'LocalBusiness'; }
 function renderTypeOptions(containerId, selected) {
   $(containerId).replaceChildren(...availableTypes().map(({ type, hint }) => {
     const label = document.createElement('label'); const input = document.createElement('input');
-    input.type = 'checkbox'; input.value = type; input.checked = selected.includes(type);
-    const text = document.createElement('span'); text.textContent = type;
-    const small = document.createElement('small'); small.textContent = hint; text.append(small);
+    input.type = 'checkbox'; input.value = type; input.checked = selected.includes(type) || (type === 'LocalBusiness' && selected.includes(businessLabel()));
+    const text = document.createElement('span'); text.textContent = type === 'LocalBusiness' ? businessLabel() : type;
+    const small = document.createElement('small'); small.textContent = type === 'LocalBusiness' ? 'Your business, from the business profile' : hint; text.append(small);
     label.append(input, text); return label;
   }));
 }
@@ -226,12 +228,13 @@ function renderMoreTypes(id, selected) {
 function planFor(page) { return state.plans[page.url] || (state.engine === 'rules' ? page.rulesPlan : page.schemaPlan) || null; }
 function describePlan(plan, page) {
   const kind = state.meta.kinds[page?.kind]?.label;
-  if (plan?.types?.length) return `${kind ? `${kind} · ` : ''}Types: ${plan.types.join(', ')}`;
+  if (plan?.types?.length) return `${kind ? `${kind} · ` : ''}Types: ${plan.types.map(type => (type === 'LocalBusiness' ? businessLabel() : type)).join(', ')}`;
   if (state.engine === 'rules') return `${kind || 'Page'} · page rules`;
   return `${kind ? `${kind} · ` : ''}Types: picker above, or AI chooses`;
 }
 function openPlan(page) {
-  const plan = planFor(page) || { types: [] };
+  const kindRule = state.engine === 'rules' ? state.activeSite?.rules?.[page.kind] : null;
+  const plan = planFor(page) || { types: kindRule || [] };
   state.planUrl = page.url;
   $('plan-url').textContent = page.url;
   $('plan-auto').textContent = state.engine === 'rules' ? 'Use page rules' : 'Let AI choose';
@@ -780,6 +783,8 @@ async function deleteRuns(ids) {
 
 function renderProfile(site) {
   const profile = site.profile;
+  // The business option in the picker is labelled with this site's business type.
+  if (state.schemaTypes.length) renderTypeOptions('type-options', readPlan('type-options', 'type-more').types);
   // Not set up (or missing what Google needs for local results) is a warning, shown in place.
   $('profile-card').classList.toggle('needs-setup', !profile?.name);
   $('profile-card').classList.toggle('has-gaps', Boolean(profile?.name && site.profileGaps?.missing?.length));
@@ -816,21 +821,23 @@ function readProfile() {
 }
 function renderRules(rules) {
   const types = state.meta.buildable;
-  $('rules-head').replaceChildren(...['Page kind', ...types].map(text => Object.assign(document.createElement('th'), { textContent: text })));
+  $('rules-head').replaceChildren(...['Page kind', ...types].map(text => Object.assign(document.createElement('th'), { textContent: text === 'LocalBusiness' ? businessLabel() : text })));
   $('rules-body').replaceChildren(...Object.entries(state.meta.kinds).map(([kind, info]) => {
     const row = document.createElement('tr');
     row.append(Object.assign(document.createElement('td'), { textContent: info.label }));
     for (const type of types) {
       const cell = document.createElement('td'); const box = document.createElement('input');
       box.type = 'checkbox'; box.dataset.kind = kind; box.value = type; box.checked = (rules?.[kind] || info.types).includes(type);
-      box.setAttribute('aria-label', `${info.label}: ${type}`); cell.append(box); row.append(cell);
+      // Service-area pages must show opening hours, so they always carry the business.
+      if (type === 'LocalBusiness' && state.meta.businessRequired?.includes(kind)) { box.checked = true; box.disabled = true; cell.title = 'Always on: service-area pages need the business opening hours.'; }
+      box.setAttribute('aria-label', `${info.label}: ${type === 'LocalBusiness' ? businessLabel() : type}`); cell.append(box); row.append(cell);
     }
     return row;
   }));
 }
 function readRules() {
   const rules = Object.fromEntries(Object.keys(state.meta.kinds).map(kind => [kind, []]));
-  document.querySelectorAll('#rules-body input:checked').forEach(box => rules[box.dataset.kind].push(box.value));
+  document.querySelectorAll('#rules-body input:checked').forEach(box => rules[box.dataset.kind].push(box.value)); // includes locked boxes
   return rules;
 }
 async function openProfile() {

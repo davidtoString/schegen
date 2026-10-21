@@ -264,6 +264,8 @@ router.post('/runs/:id/generate', route(async (req, res) => {
           } else {
             plan = planFor(page);
             updatePage(run.id, page.url, { schemaPlan: plan });
+            // Ask the AI for the site's own business type (HVACBusiness, Plumber, …) when one is set.
+            if (site.profile?.type && plan.types.includes('LocalBusiness')) plan = { ...plan, types: plan.types.map(type => (type === 'LocalBusiness' ? site.profile.type : type)) };
             const generated = await schemas.generatePlanned(pageData, aiOptions, plan);
             const enforced = builder.enforceSiteRules(generated.schema, page.pageData, { siteUrl: site.url, profile: site.profile });
             schema = enforced.schema;
@@ -396,7 +398,7 @@ router.post('/runs/:id/verify', route(async (req, res) => {
   } finally { busySites.delete(run.siteId); }
 }));
 const scriptTag = schema => `<script type="application/ld+json">\n${JSON.stringify(schema, null, 2).replace(/</g, '\\u003c')}\n</script>`;
-router.get('/schema-types', (req, res) => res.json({ success: true, types: schemas.SCHEMA_TYPES, moreTypes: schemas.MORE_SCHEMA_TYPES, kinds: builder.KINDS, buildable: builder.BUILDABLE, businessTypes: profiles.BUSINESS_TYPES }));
+router.get('/schema-types', (req, res) => res.json({ success: true, types: schemas.SCHEMA_TYPES, moreTypes: schemas.MORE_SCHEMA_TYPES, kinds: builder.KINDS, buildable: builder.BUILDABLE, businessRequired: builder.BUSINESS_REQUIRED, businessTypes: profiles.BUSINESS_TYPES }));
 // Suggest a business profile from the site (not saved until the user confirms it).
 router.post('/sites/:id/profile/detect', route(async (req, res) => {
   const site = siteFor(req.params.id);
@@ -412,7 +414,7 @@ router.put('/sites/:id/profile', route(async (req, res) => {
   siteFor(req.params.id);
   const profile = profiles.normalize(req.body.profile);
   if (!profile.name) fail('The business name is required.');
-  const rules = req.body.rules ? builder.rulesFor(req.body.rules) : undefined;
+  const rules = req.body.rules ? builder.saveRules(req.body.rules) : undefined;
   res.json({ success: true, site: siteView(store.setProfile(req.params.id, profile, rules)) });
 }));
 // Generated schema for a header/footer code plugin (WPCode, Insert Headers and Footers, …) or a manual paste.

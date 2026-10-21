@@ -2,27 +2,43 @@ const { cityFromTitle, parseHours } = require('./businessProfile');
 
 /**
  * Rule-based schema: the business profile + page rules + crawled page → JSON-LD, with no AI.
- * Every page carries the business and WebSite entities (so references always resolve when
- * Rank Math's graph is replaced), a WebPage of the right kind, and the page entities its
- * kind's rule (or the page's own Types override) asks for.
+ * Every page carries the WebSite entity and a WebPage of the right kind, plus the entities its
+ * kind's rule (or the page's own Types override) asks for. "LocalBusiness" stands for the site's
+ * business entity, typed from its profile (HVACBusiness, Plumber, …).
  */
 
-// Page entities the builder can make. The page node, business and WebSite are always included.
-const BUILDABLE = ['BreadcrumbList', 'Service', 'FAQPage', 'BlogPosting'];
+// Entities the builder can make. The page node and WebSite are always included.
+const BUILDABLE = ['LocalBusiness', 'BreadcrumbList', 'Service', 'FAQPage', 'BlogPosting'];
+// Kinds whose pages always carry the business: service-area pages must show opening hours.
+const BUSINESS_REQUIRED = ['location'];
 const KINDS = {
-  home: { label: 'Home page', page: 'WebPage', types: ['FAQPage'] },
-  service: { label: 'Service page', page: 'WebPage', types: ['BreadcrumbList', 'Service', 'FAQPage'] },
-  location: { label: 'Service-area page', page: 'WebPage', types: ['BreadcrumbList', 'Service', 'FAQPage'] },
-  hub: { label: 'Listing page', page: 'CollectionPage', types: ['BreadcrumbList'] },
-  about: { label: 'About page', page: 'AboutPage', types: ['BreadcrumbList'] },
-  contact: { label: 'Contact page', page: 'ContactPage', types: ['BreadcrumbList'] },
-  blog: { label: 'Blog post', page: 'WebPage', types: ['BreadcrumbList', 'BlogPosting'] },
-  utility: { label: 'Utility page', page: 'WebPage', types: [] }
+  home: { label: 'Home page', page: 'WebPage', types: ['LocalBusiness', 'FAQPage'] },
+  service: { label: 'Service page', page: 'WebPage', types: ['LocalBusiness', 'BreadcrumbList', 'Service', 'FAQPage'] },
+  location: { label: 'Service-area page', page: 'WebPage', types: ['LocalBusiness', 'BreadcrumbList', 'Service', 'FAQPage'] },
+  hub: { label: 'Listing page', page: 'CollectionPage', types: ['LocalBusiness', 'BreadcrumbList'] },
+  about: { label: 'About page', page: 'AboutPage', types: ['LocalBusiness', 'BreadcrumbList'] },
+  contact: { label: 'Contact page', page: 'ContactPage', types: ['LocalBusiness', 'BreadcrumbList'] },
+  blog: { label: 'Blog post', page: 'WebPage', types: ['LocalBusiness', 'BreadcrumbList', 'BlogPosting'] },
+  utility: { label: 'Utility page', page: 'WebPage', types: ['LocalBusiness'] }
 };
+const RULES_VERSION = 2;
 
+/**
+ * Page rules per kind. Rules saved before the business became selectable (no `version`) had
+ * it on every page implicitly, so it is added back to every kind for them.
+ */
 function rulesFor(saved) {
-  return Object.fromEntries(Object.keys(KINDS).map(kind => [kind, Array.isArray(saved?.[kind]) ? saved[kind].filter(type => BUILDABLE.includes(type)) : KINDS[kind].types]));
+  const legacy = saved && saved.version !== RULES_VERSION;
+  return Object.fromEntries(Object.keys(KINDS).map(kind => {
+    const types = Array.isArray(saved?.[kind]) ? saved[kind].filter(type => BUILDABLE.includes(type)) : KINDS[kind].types;
+    const withBusiness = (legacy && Array.isArray(saved?.[kind])) || BUSINESS_REQUIRED.includes(kind) ? ['LocalBusiness', ...types] : types;
+    return [kind, [...new Set(withBusiness)]];
+  }));
 }
+// What gets stored when rules are saved from the UI.
+function saveRules(input) { return { ...rulesFor({ ...input, version: RULES_VERSION }), version: RULES_VERSION }; }
+// Any business type picked (the profile's HVACBusiness, Plumber, …) means the business entity.
+const asBuildable = type => (type !== 'Service' && type !== 'LocalBusiness' && /Business|Contractor|Plumber|Electrician|Locksmith|Painter|Store|Restaurant|Dentist|Service$|^Organization$/.test(type) ? 'LocalBusiness' : type);
 
 function pathOf(url) { try { return new URL(url).pathname.replace(/\/+$/, '') || '/'; } catch { return '/'; } }
 
@@ -124,7 +140,8 @@ function breadcrumbs(page, origin, pages) {
 function build(pageData, { siteUrl, profile, rules, plan, pages = [] }) {
   const origin = new URL(siteUrl).origin;
   const kind = classify({ url: pageData.url, pageData }, siteUrl);
-  const wanted = plan?.types?.length ? plan.types.filter(type => BUILDABLE.includes(type)) : rulesFor(rules)[kind];
+  const wanted = plan?.types?.length ? [...new Set(plan.types.map(asBuildable))].filter(type => BUILDABLE.includes(type)) : rulesFor(rules)[kind];
+  const withBusiness = wanted.includes('LocalBusiness') || BUSINESS_REQUIRED.includes(kind);
   const url = pageData.url;
   const ids = { business: `${origin}/#business`, website: `${origin}/#website`, page: `${url}#webpage`, breadcrumb: `${url}#breadcrumb`, service: `${url}#service`, faq: `${url}#faq`, article: `${url}#article` };
   // On pages about one area (service and service-area pages) every areaServed, the business's
@@ -169,8 +186,17 @@ function build(pageData, { siteUrl, profile, rules, plan, pages = [] }) {
       publisher: { '@id': ids.business }, mainEntityOfPage: { '@id': ids.page }
     });
   }
-  const schema = { '@context': 'https://schema.org', '@graph': graph.map(clean) };
+  // Without the business entity, links to it (provider, publisher, about, author) go too.
+  const kept = withBusiness ? graph : dropRefs(graph.slice(1), ids.business);
+  const schema = { '@context': 'https://schema.org', '@graph': kept.map(clean) };
   return { schema, missing, kind, errors: siteRuleErrors(schema, kind) };
+}
+
+function dropRefs(value, id) {
+  if (Array.isArray(value)) return value.map(item => dropRefs(item, id)).filter(item => item !== undefined);
+  if (!value || typeof value !== 'object') return value;
+  if (Object.keys(value).length === 1 && value['@id'] === id) return undefined;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, dropRefs(item, id)]).filter(([, item]) => item !== undefined));
 }
 
 const AREA_KINDS = ['service', 'location'];
@@ -250,4 +276,4 @@ function completeness(schema, { skipBusiness = false } = {}) {
   return { errors: [...new Set(errors)], warnings: [...new Set(warnings)] };
 }
 
-module.exports = { BUILDABLE, KINDS, rulesFor, classify, build, completeness, serviceName, pageArea, enforceSiteRules };
+module.exports = { BUILDABLE, BUSINESS_REQUIRED, KINDS, rulesFor, saveRules, classify, build, completeness, serviceName, pageArea, enforceSiteRules };

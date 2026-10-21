@@ -2,6 +2,11 @@
 
 All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
 
+## [3.7.0] - 2026-10-21
+
+### Added
+- **The business entity is selectable** in Choose (both engines) and in Page rules, labelled with each site's own type from its profile (HVACBusiness, Plumber, Electrician, …). It is on by default for every page kind, rules saved before this keep it on every page, and service-area pages always carry it (opening hours are required there). Switching it off also removes links to it (Service provider, WebSite publisher). For AI, picking it asks for the site's own business type.
+
 ## [3.6.0] - 2026-10-21
 
 ### Added
