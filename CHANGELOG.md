@@ -2,6 +2,11 @@
 
 All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
 
+## [3.2.1] - 2026-10-21
+
+### Added
+- Up/down scroll navigator in the bottom-right corner; each arrow shows only when there is somewhere to go. Notices now appear just above it.
+
 ## [3.2.0] - 2026-10-21
 
 ### Added

@@ -164,6 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('detect-profile').addEventListener('click', () => detectProfile(false));
   $('profile-form').addEventListener('submit', saveProfile);
   loadSchemaTypes().catch(error => notify(error.message, 'error'));
+  initScrollNav();
   loadSites();
 });
 
@@ -740,4 +741,22 @@ async function saveProfile(event) {
     state.activeSite = body.site; renderProfile(body.site); $('profile-dialog').close();
     notify('Business profile saved. Generate again to apply it to pages.', 'success');
   } catch (error) { $('profile-message').textContent = error.message; }
+}
+
+// Up/down jump buttons; each shows only when there's somewhere to go.
+function initScrollNav() {
+  const top = $('scroll-top'); const bottom = $('scroll-bottom');
+  const smooth = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+  const update = () => {
+    const room = document.documentElement.scrollHeight - window.innerHeight;
+    top.hidden = window.scrollY < 200;
+    bottom.hidden = room - window.scrollY < 200;
+  };
+  top.addEventListener('click', () => window.scrollTo({ top: 0, behavior: smooth }));
+  bottom.addEventListener('click', () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: smooth }));
+  window.addEventListener('scroll', update, { passive: true });
+  window.addEventListener('resize', update);
+  // Content grows as runs load and poll; re-check when the page height changes.
+  new ResizeObserver(update).observe(document.body);
+  update();
 }

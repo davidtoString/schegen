@@ -427,3 +427,12 @@ details > summary { cursor: pointer; color: var(--text-2); font-size: .84rem; ma
 .rules-table td:nth-child(2) { min-width: 0; }
 @media (max-width: 640px) { .engine-choice { grid-template-columns: 1fr; } }
 #generate-run { margin: .5rem 0 1rem; }
+/* Scroll navigator */
+.scroll-nav { position: fixed; z-index: 40; right: 1.25rem; bottom: 1.25rem; display: flex; flex-direction: column; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-lg); }
+.scroll-nav:not(:has(.scroll-button:not([hidden]))) { display: none; }
+.scroll-button { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 999px; background: transparent; color: var(--text-2); cursor: pointer; transition: background-color .12s, color .12s; }
+.scroll-button:hover { background: var(--surface-3); color: var(--text); }
+.scroll-button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.scroll-button svg { width: 18px; height: 18px; }
+.workspace-alert { bottom: 6.25rem; }
+@media (max-width: 640px) { .scroll-nav { right: .75rem; bottom: .75rem; } .scroll-button { width: 30px; height: 30px; } }
