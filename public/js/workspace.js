@@ -1,4 +1,4 @@
-const state = { sites: [], activeSite: null, activeRun: null, poller: null, wizardStep: 'pages', wizardAction: null, wizardMaxStep: 0, schemaTypes: [], plans: {}, reviewSchema: null };
+const state = { sites: [], activeSite: null, activeRun: null, poller: null, wizardStep: 'pages', wizardAction: null, wizardMaxStep: 0, schemaTypes: [], meta: { kinds: {}, buildable: [], businessTypes: [] }, plans: {}, reviewSchema: null, engine: 'rules' };
 const WIZARD_STEPS = ['pages', 'action', 'review', 'apply'];
 
 const $ = id => document.getElementById(id);
@@ -35,11 +35,11 @@ function guideText(run) {
   if (!state.activeSite) return 'Start here: add your WordPress site, then save your AI key in AI Settings.';
   if (!run) return 'Step 1: Test the connection, then click Crawl site to find pages.';
   if (['crawling', 'discovering'].includes(run.status)) return 'Crawling… select the pages you want below, then continue.';
-  if (run.status === 'generating') return 'AI is generating your schema. Check back once it is ready.';
+  if (run.status === 'generating') return 'Generating schema… pages update as they finish.';
   switch (state.wizardStep) {
     case 'pages': return 'Crawl the site, then check the pages you want to work with below.';
     case 'action': return 'Choose whether to create new schema or delete existing schema for the selected pages.';
-    case 'review': return state.wizardAction === 'delete' ? 'Removal was previewed automatically for the pages you selected — open Review on each row, then continue.' : 'Configure AI generation and click Generate — a preview runs automatically once it finishes.';
+    case 'review': return state.wizardAction === 'delete' ? 'Removal was previewed automatically for the pages you selected — open Review on each row, then continue.' : 'Choose Rules or AI and click Generate. A preview runs automatically when it finishes.';
     case 'apply': return 'Open Review on each page below, approve, then apply. Undo remains available afterward.';
     default: return '';
   }
@@ -62,6 +62,7 @@ function renderWizard() {
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   $('open-help').addEventListener('click', () => $('help-dialog').showModal());
+  document.querySelector('[data-action="open-help"]')?.addEventListener('click', event => { event.preventDefault(); $('help-dialog').showModal(); });
   $('close-help').addEventListener('click', () => $('help-dialog').close());
   $('close-help-footer').addEventListener('click', () => $('help-dialog').close());
   $('open-ai-settings').addEventListener('click', openAISettings);
@@ -138,12 +139,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('apply-types').addEventListener('click', () => {
     const urls = selectedUrls();
     if (!urls.length) return notify('Select pages first.', 'error');
-    const plan = readPlan('type-options', 'type-custom', 'type-notes');
+    const plan = readPlan('type-options', 'type-custom');
     urls.forEach(url => { state.plans[url] = plan; });
     renderRun(); notify(`Schema types set for ${urls.length} page(s).`, 'success');
   });
-  $('plan-form').addEventListener('submit', () => { state.plans[state.planUrl] = readPlan('plan-type-options', 'plan-custom', 'plan-notes'); renderRun(); });
-  $('plan-auto').addEventListener('click', () => { state.plans[state.planUrl] = { types: [], notes: $('plan-notes').value.trim() }; $('plan-dialog').close(); renderRun(); });
+  $('plan-form').addEventListener('submit', () => { state.plans[state.planUrl] = readPlan('plan-type-options', 'plan-custom'); renderRun(); });
+  $('plan-auto').addEventListener('click', () => { state.plans[state.planUrl] = { types: [] }; $('plan-dialog').close(); renderRun(); });
   $('plan-cancel').addEventListener('click', () => $('plan-dialog').close());
   document.querySelectorAll('[data-export]').forEach(button => button.addEventListener('click', () => {
     const run = state.activeRun;
@@ -156,6 +157,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('download-backups').addEventListener('click', () => { window.location.href = `/api/workspaces/sites/${state.activeSite.id}/backups`; });
   $('copy-json').addEventListener('click', () => copyText(JSON.stringify(state.reviewSchema, null, 2)));
   $('copy-script').addEventListener('click', () => copyText(`<script type="application/ld+json">\n${JSON.stringify(state.reviewSchema, null, 2).replace(/</g, '\\u003c')}\n</script>`));
+  document.querySelectorAll('input[name="engine"]').forEach(input => input.addEventListener('change', () => applyEngine(input.value)));
+  $('edit-profile').addEventListener('click', openProfile);
+  $('close-profile').addEventListener('click', () => $('profile-dialog').close());
+  $('cancel-profile').addEventListener('click', () => $('profile-dialog').close());
+  $('detect-profile').addEventListener('click', () => detectProfile(false));
+  $('profile-form').addEventListener('submit', saveProfile);
   loadSchemaTypes().catch(error => notify(error.message, 'error'));
   loadSites();
 });
@@ -167,11 +174,25 @@ async function copyText(text) {
 }
 
 async function loadSchemaTypes() {
-  state.schemaTypes = (await api('/api/workspaces/schema-types')).types;
+  const body = await api('/api/workspaces/schema-types');
+  state.schemaTypes = body.types;
+  state.meta = { kinds: body.kinds, buildable: body.buildable, businessTypes: body.businessTypes };
+  $('business-types').replaceChildren(...body.businessTypes.map(type => Object.assign(document.createElement('option'), { value: type })));
   renderTypeOptions('type-options', []);
 }
+function applyEngine(engine) {
+  state.engine = engine;
+  $('ai-fields').hidden = engine !== 'ai';
+  $('ai-type-picker').hidden = engine !== 'ai';
+  $('rules-hint').hidden = engine !== 'rules';
+  if (state.activeRun) renderRun();
+}
+// Types the current engine can produce: the rules builder makes a fixed set, AI anything.
+function availableTypes() {
+  return state.engine === 'rules' ? state.schemaTypes.filter(item => state.meta.buildable.includes(item.type)) : state.schemaTypes;
+}
 function renderTypeOptions(containerId, selected) {
-  $(containerId).replaceChildren(...state.schemaTypes.map(({ type, hint }) => {
+  $(containerId).replaceChildren(...availableTypes().map(({ type, hint }) => {
     const label = document.createElement('label'); const input = document.createElement('input');
     input.type = 'checkbox'; input.value = type; input.checked = selected.includes(type);
     const text = document.createElement('span'); text.textContent = type;
@@ -179,24 +200,26 @@ function renderTypeOptions(containerId, selected) {
     label.append(input, text); return label;
   }));
 }
-function readPlan(containerId, customId, notesId) {
+function readPlan(containerId, customId) {
   const types = [...$(containerId).querySelectorAll('input:checked')].map(input => input.value);
   types.push(...$(customId).value.split(',').map(type => type.trim()).filter(Boolean));
-  return { types: [...new Set(types)], notes: $(notesId).value.trim() };
+  return { types: [...new Set(types)] };
 }
-function planFor(page) { return state.plans[page.url] || page.schemaPlan || null; }
-function describePlan(plan) {
-  if (!plan || (!plan.types?.length && !plan.notes)) return 'Types: picker above, or AI chooses';
-  return `Types: ${plan.types?.length ? plan.types.join(', ') : 'AI chooses'}${plan.notes ? ' · has instructions' : ''}`;
+function planFor(page) { return state.plans[page.url] || (state.engine === 'rules' ? page.rulesPlan : page.schemaPlan) || null; }
+function describePlan(plan, page) {
+  const kind = state.meta.kinds[page?.kind]?.label;
+  if (plan?.types?.length) return `${kind ? `${kind} · ` : ''}Types: ${plan.types.join(', ')}`;
+  if (state.engine === 'rules') return `${kind || 'Page'} · page rules`;
+  return `${kind ? `${kind} · ` : ''}Types: picker above, or AI chooses`;
 }
 function openPlan(page) {
-  const plan = planFor(page) || { types: [], notes: '' };
-  const known = state.schemaTypes.map(item => item.type);
+  const plan = planFor(page) || { types: [] };
+  const known = availableTypes().map(item => item.type);
   state.planUrl = page.url;
   $('plan-url').textContent = page.url;
+  $('plan-auto').textContent = state.engine === 'rules' ? 'Use page rules' : 'Let AI choose';
   renderTypeOptions('plan-type-options', plan.types || []);
   $('plan-custom').value = (plan.types || []).filter(type => !known.includes(type)).join(', ');
-  $('plan-notes').value = plan.notes || '';
   $('plan-dialog').showModal();
 }
 
@@ -225,7 +248,7 @@ function applyAIProvider() {
   const settings = configuredAI?.providers[provider];
   generationProvider = provider;
   setupModelPicker('ai-model', settings?.models || [], modelDrafts[provider] ?? settings?.model ?? '', `Use saved default (${settings?.model || settings?.defaultModel || 'provider default'})`);
-  $('ai-configuration-status').textContent = settings?.hasSavedKey ? 'Using encrypted key saved in AI Settings.' : settings?.hasEnvironmentKey ? 'Using server environment key.' : 'No saved key. Open AI Settings to configure this provider.';
+  $('ai-configuration-status').textContent = settings?.hasSavedKey ? `Using the saved key ${settings.savedKeyHint}.` : settings?.hasEnvironmentKey ? `Using the server environment key ${settings.environmentKeyHint}.` : 'No saved key. Open AI Settings to configure this provider.';
 }
 async function openAISettings() {
   try {
@@ -236,7 +259,7 @@ async function openAISettings() {
       $(`settings-${provider}-key`).value = '';
       setupModelPicker(`settings-${provider}-model`, settings.models || [], settings.model, `App default (${settings.defaultModel})`);
       $(`settings-${provider}-remove`).checked = false;
-      $(`settings-${provider}-status`).textContent = `${settings.hasSavedKey ? 'Encrypted key saved' : 'No key saved in UI'}${settings.hasEnvironmentKey ? ' · Environment key also configured' : ''}. Key validity is checked when you generate.`;
+      $(`settings-${provider}-status`).textContent = `${settings.hasSavedKey ? `Saved key: ${settings.savedKeyHint} (used for generation)` : 'No key saved here'}${settings.hasEnvironmentKey ? ` · Server environment key: ${settings.environmentKeyHint}${settings.hasSavedKey ? ' (backup)' : ' (used for generation)'}` : ''}. Validity is checked when you generate.`;
     }
     $('ai-settings-message').textContent = '';
     $('ai-settings-dialog').showModal();
@@ -296,6 +319,7 @@ function renderSites() {
   state.sites.forEach(site => {
     const button = document.createElement('button');
     button.className = `site-item${state.activeSite?.id === site.id ? ' active' : ''}`;
+    button.dataset.siteId = site.id;
     const icon = document.createElement('span'); icon.className = 'site-avatar'; icon.textContent = site.name.slice(0, 2).toUpperCase();
     const text = document.createElement('span');
     const strong = document.createElement('strong'); strong.textContent = site.name;
@@ -316,14 +340,21 @@ function showEmpty() {
 async function selectSite(id, preferredRun) {
   window.clearInterval(state.poller);
   const selection = state.selection = (state.selection || 0) + 1;
-  const body = await api(`/api/workspaces/sites/${id}`);
-  let chosenRun = body.runs.find(run => run.id === preferredRun);
+  // Show the switch immediately; the data arrives after.
+  if (state.activeSite?.id !== id) {
+    document.querySelectorAll('.site-item').forEach(item => item.classList.toggle('active', item.dataset.siteId === id));
+    $('site-panel').classList.add('loading');
+  }
+  let body;
+  try { body = await api(`/api/workspaces/sites/${id}?run=${encodeURIComponent(preferredRun || 'latest')}`); }
+  finally { if (selection === state.selection) $('site-panel').classList.remove('loading'); }
+  let chosenRun = body.run?.id === preferredRun || !preferredRun ? body.run : null;
   if (preferredRun && !chosenRun) {
     try { const saved = await api(`/api/workspaces/runs/${encodeURIComponent(preferredRun)}`); if (saved.run.siteId === id) chosenRun = saved.run; } catch { /* Removed run: fall back to most recent. */ }
   }
   if (selection !== state.selection) return;
   state.activeSite = body.site;
-  state.activeRun = chosenRun || body.runs[0] || null;
+  state.activeRun = chosenRun || body.run || null;
   resetWizard();
   $('pages-table').replaceChildren();
   $('empty-state').hidden = true;
@@ -332,6 +363,7 @@ async function selectSite(id, preferredRun) {
   $('active-site-url').textContent = body.site.url;
   $('active-site-url').href = body.site.url;
   updateConnectionBadge(body.site);
+  renderProfile(body.site);
   renderSites();
   renderRun();
   renderHistory(body.runs);
@@ -427,13 +459,14 @@ function initTheme() {
   if (!button) return;
   const apply = theme => {
     document.documentElement.dataset.theme = theme;
-    button.querySelector('.icon').textContent = theme === 'dark' ? '☀️' : '🌙';
-    button.querySelector('.label').textContent = theme === 'dark' ? 'Light' : 'Dark';
+    button.querySelector('.label').textContent = theme === 'dark' ? 'Light mode' : 'Dark mode';
   };
-  apply(localStorage.getItem('schema-theme') || 'light');
+  // The <head> script already applied the saved theme, or the system one, before first paint.
+  apply(document.documentElement.dataset.theme || 'light');
   button.addEventListener('click', () => {
     const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-    localStorage.setItem('schema-theme', theme); apply(theme);
+    try { localStorage.setItem('schema-theme', theme); } catch { /* Theme still applies for this visit. */ }
+    apply(theme);
   });
 }
 
@@ -444,9 +477,10 @@ function selectedUrls() {
 async function generateRun() {
   const urls = selectedUrls();
   if (!urls.length) return notify('Select at least one page first.', 'error');
+  if (state.engine === 'rules' && !state.activeSite.profile?.name) { notify('Set up the business profile first. It is filled in for you; check it and save.', 'info'); return openProfile(); }
   try {
     await api(`/api/workspaces/runs/${state.activeRun.id}/generate`, {
-      method: 'POST', body: JSON.stringify({ urls, ...generationPlans(urls), useAI: true, provider: $('ai-provider').value, apiKey: $('ai-key').value, model: selectedModel('ai-model') || undefined })
+      method: 'POST', body: JSON.stringify({ urls, engine: state.engine, ...generationPlans(urls), provider: $('ai-provider').value, apiKey: $('ai-key').value, model: selectedModel('ai-model') || undefined })
     });
     $('ai-key').value = '';
     state.activeRun.status = 'generating'; renderRun();
@@ -463,8 +497,8 @@ async function generateRun() {
 
 function generationPlans(urls) {
   const plans = Object.fromEntries(urls.filter(url => state.plans[url]).map(url => [url, state.plans[url]]));
-  const picker = readPlan('type-options', 'type-custom', 'type-notes');
-  return { plans, ...(picker.types.length || picker.notes ? { defaultPlan: picker } : {}) };
+  const picker = readPlan('type-options', 'type-custom');
+  return { plans, ...(state.engine === 'ai' && picker.types.length ? { defaultPlan: picker } : {}) };
 }
 
 function startPolling() {
@@ -523,25 +557,34 @@ function renderRun() {
   const tbody = document.createElement('tbody');
   run.pages.forEach(page => {
     const row = document.createElement('tr');
-    const selectCell = document.createElement('td'); const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'page-select'; checkbox.value = page.url; checkbox.checked = ['queued', 'crawled', 'generated', 'verification_pending', 'publish_failed'].includes(page.status); checkbox.setAttribute('aria-label', `Select ${page.title || page.url}`); selectCell.append(checkbox);
+    const selectCell = document.createElement('td'); const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'page-select'; checkbox.value = page.url; const canonicalElsewhere = page.pageData?.canonical && page.pageData.canonical.replace(/\/$/, '') !== page.url.replace(/\/$/, '');
+    checkbox.checked = !canonicalElsewhere && ['queued', 'crawled', 'generated', 'verification_pending', 'publish_failed'].includes(page.status); checkbox.setAttribute('aria-label', `Select ${page.title || page.url}`); selectCell.append(checkbox);
     const pageCell = document.createElement('td'); const link = document.createElement('a'); link.href = page.url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = page.title || page.url; const url = document.createElement('small'); url.textContent = page.url; pageCell.append(link, url);
     const schemaCell = document.createElement('td'); schemaCell.textContent = page.schemaTypes?.join(', ') || '—';
     const review = document.createElement('button'); review.className = 'btn btn-secondary'; review.textContent = 'Review';
-    review.addEventListener('click', () => {
+    review.addEventListener('click', async () => {
+      // The table only carries a light page summary; fetch the crawled content for this page now.
+      let detail = page;
+      review.disabled = true;
+      try { detail = (await api(`/api/workspaces/runs/${state.activeRun.id}/page?url=${encodeURIComponent(page.url)}`)).page; }
+      catch (error) { notify(error.message, 'error'); }
+      finally { review.disabled = false; }
+      const pageData = detail.pageData || {};
       $('schema-review-url').textContent = page.url;
       state.reviewSchema = page.schema || null;
       $('schema-review-json').textContent = JSON.stringify(page.schema || {}, null, 2);
-      $('schema-review-existing').textContent = JSON.stringify(page.existingReview?.existing || page.pageData?.existingSchema || [], null, 2);
+      $('schema-review-existing').textContent = JSON.stringify(page.existingReview?.existing || pageData.existingSchema || [], null, 2);
       const preview = page.existingReview;
       $('schema-review-decision').textContent = preview ? [preview.skip ? 'Keep existing: no changes.' : preview.suppressRankMath ? preview.decision === 'remove-existing' ? 'Remove public Rank Math and app schema from this page. Underlying Rank Math settings remain for Undo.' : 'Suppress the Rank Math page graph and replace it with the AI graph below. Other plugin output remains.' : 'App-managed storage will be replaced; Rank Math/third-party nodes stay active.', preview.blocked, ...(preview.conflicts || []), preview.requiresAcknowledgement ? 'Explicit approval required.' : ''].filter(Boolean).join('\n') : 'Click Preview to fetch current WordPress schema before publishing.';
       $('schema-review-before').textContent = JSON.stringify(preview?.before || null, null, 2);
       $('schema-review-after').textContent = JSON.stringify(preview ? preview.after : page.schema || null, null, 2);
       $('schema-review-records').textContent = JSON.stringify({ insertions: page.insertionHistory, previousReceipts: page.receiptHistory, lastInsertion: page.writeReceipt, rollbacks: page.rollbackHistory }, null, 2);
-      $('schema-review-content').textContent = page.pageData?.content || 'No crawled content.';
-      $('schema-review-messages').textContent = [page.pageData?.fetchWarning, ...(page.validation?.errors || []), ...(page.validation?.warnings || []), page.error, page.publishError, page.publishResult?.verificationMessage].filter(Boolean).join('\n');
+      $('schema-review-content').textContent = pageData.content || 'No crawled content.';
+      const made = page.generation?.engine === 'rules' ? 'Built by rules from the business profile.' : page.generation?.engine === 'ai' ? `Generated by AI: ${page.generation.provider} ${page.generation.model}${page.generation.keyHint ? `, ${page.generation.keySource || 'key'} ${page.generation.keyHint}` : ''}.` : '';
+      $('schema-review-messages').textContent = [made, pageData.fetchWarning, ...(page.validation?.errors || []), ...(page.validation?.warnings || []), page.error, page.publishError, page.publishResult?.verificationMessage].filter(Boolean).join('\n');
       $('schema-dialog').showModal();
     });
-    const planText = document.createElement('span'); planText.className = 'plan-summary'; planText.textContent = describePlan(planFor(page));
+    const planText = document.createElement('span'); planText.className = 'plan-summary'; planText.textContent = describePlan(planFor(page), page);
     const planButton = document.createElement('button'); planButton.className = 'btn btn-secondary'; planButton.textContent = 'Types';
     planButton.disabled = !page.pageData; planButton.addEventListener('click', () => openPlan(page));
     schemaCell.append(planText, review, planButton);
@@ -621,4 +664,80 @@ function renderHistory(runs) {
       } catch (error) { notify(error.message, 'error'); }
     }); container.append(button);
   });
+}
+
+function renderProfile(site) {
+  const profile = site.profile;
+  $('profile-summary').textContent = profile?.name
+    ? [profile.name, profile.type, [profile.address?.addressLocality, profile.address?.addressRegion].filter(Boolean).join(', '), profile.telephone].filter(Boolean).join(' · ')
+    : 'Not set up yet. Needed for rule-based schema: click Edit profile and it fills itself in from the site.';
+  const gaps = site.profileGaps;
+  $('profile-gaps').hidden = !gaps;
+  if (gaps) {
+    const parts = [gaps.missing.length ? `Missing: ${gaps.missing.join(', ')}.` : '', gaps.recommended.length ? `Worth adding: ${gaps.recommended.join(', ')}.` : ''].filter(Boolean);
+    $('profile-gaps').textContent = parts.join(' ') || 'Complete.';
+    $('profile-gaps').classList.toggle('ok', !parts.length);
+  }
+}
+
+const PROFILE_FIELDS = { name: 'pf-name', type: 'pf-type', telephone: 'pf-telephone', email: 'pf-email', logo: 'pf-logo', image: 'pf-image', priceRange: 'pf-price', description: 'pf-description' };
+const ADDRESS_FIELDS = { streetAddress: 'pf-street', addressLocality: 'pf-city', addressRegion: 'pf-region', postalCode: 'pf-postal', addressCountry: 'pf-country' };
+const LIST_FIELDS = { openingHours: 'pf-hours', areaServed: 'pf-areas', sameAs: 'pf-sameas' };
+function fillProfile(profile, onlyEmpty) {
+  let filled = 0;
+  const set = (id, value) => { if (value && (!onlyEmpty || !$(id).value.trim())) { $(id).value = value; filled++; } };
+  for (const [key, id] of Object.entries(PROFILE_FIELDS)) set(id, profile[key]);
+  for (const [key, id] of Object.entries(ADDRESS_FIELDS)) set(id, profile.address?.[key]);
+  for (const [key, id] of Object.entries(LIST_FIELDS)) set(id, (profile[key] || []).join(key === 'areaServed' ? ', ' : '\n'));
+  return filled;
+}
+function readProfile() {
+  const profile = Object.fromEntries(Object.entries(PROFILE_FIELDS).map(([key, id]) => [key, $(id).value.trim()]));
+  profile.address = Object.fromEntries(Object.entries(ADDRESS_FIELDS).map(([key, id]) => [key, $(id).value.trim()]));
+  for (const [key, id] of Object.entries(LIST_FIELDS)) profile[key] = $(id).value.split(key === 'areaServed' ? /[\n,]/ : /\n/).map(item => item.trim()).filter(Boolean);
+  return profile;
+}
+function renderRules(rules) {
+  const types = state.meta.buildable;
+  $('rules-head').replaceChildren(...['Page kind', ...types].map(text => Object.assign(document.createElement('th'), { textContent: text })));
+  $('rules-body').replaceChildren(...Object.entries(state.meta.kinds).map(([kind, info]) => {
+    const row = document.createElement('tr');
+    row.append(Object.assign(document.createElement('td'), { textContent: info.label }));
+    for (const type of types) {
+      const cell = document.createElement('td'); const box = document.createElement('input');
+      box.type = 'checkbox'; box.dataset.kind = kind; box.value = type; box.checked = (rules?.[kind] || info.types).includes(type);
+      box.setAttribute('aria-label', `${info.label}: ${type}`); cell.append(box); row.append(cell);
+    }
+    return row;
+  }));
+}
+function readRules() {
+  const rules = Object.fromEntries(Object.keys(state.meta.kinds).map(kind => [kind, []]));
+  document.querySelectorAll('#rules-body input:checked').forEach(box => rules[box.dataset.kind].push(box.value));
+  return rules;
+}
+async function openProfile() {
+  const site = state.activeSite;
+  $('profile-form').reset(); $('profile-message').textContent = '';
+  if (site.profile) fillProfile(site.profile, false);
+  renderRules(site.rules);
+  $('profile-dialog').showModal();
+  if (!site.profile?.name) await detectProfile(true);
+}
+async function detectProfile(firstTime) {
+  const button = $('detect-profile'); button.disabled = true; $('profile-message').textContent = 'Reading the site…';
+  try {
+    const body = await api(`/api/workspaces/sites/${state.activeSite.id}/profile/detect`, { method: 'POST', body: '{}' });
+    const filled = fillProfile(body.profile, !firstTime);
+    $('profile-message').textContent = `${firstTime ? 'Filled in from the site' : `Filled ${filled} empty field(s)`}${body.crawledPages ? ` using ${body.crawledPages} crawled page(s)` : '. Crawl the site for better results'}. Check everything before saving.`;
+  } catch (error) { $('profile-message').textContent = error.message; }
+  finally { button.disabled = false; }
+}
+async function saveProfile(event) {
+  event.preventDefault();
+  try {
+    const body = await api(`/api/workspaces/sites/${state.activeSite.id}/profile`, { method: 'PUT', body: JSON.stringify({ profile: readProfile(), rules: readRules() }) });
+    state.activeSite = body.site; renderProfile(body.site); $('profile-dialog').close();
+    notify('Business profile saved. Generate again to apply it to pages.', 'success');
+  } catch (error) { $('profile-message').textContent = error.message; }
 }

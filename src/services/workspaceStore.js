@@ -133,6 +133,18 @@ function updateSite(id, input) {
   return publicSite(data.sites[index]);
 }
 
+// Business profile + page rules drive the rule-based builder; both are plain data on the site.
+function setProfile(id, profile, rules) {
+  const data = read();
+  const site = data.sites.find(item => item.id === id);
+  if (!site) return null;
+  site.profile = profile;
+  if (rules) site.rules = rules;
+  site.updatedAt = new Date().toISOString();
+  write(data);
+  return publicSite(site);
+}
+
 function getSite(id, includeSecrets = false) {
   const site = read().sites.find(item => item.id === id);
   if (!site) return null;
@@ -202,7 +214,17 @@ function listRuns(siteId, limit = 25) {
   return read().runs.filter(run => !siteId || run.siteId === siteId).slice(0, limit);
 }
 
+// Run history without page data: crawled pages carry full page text, so whole runs get large fast.
+function listRunSummaries(siteId, limit = 25) {
+  return listRuns(siteId, limit).map(({ pages, lastPublish, ...run }) => ({ ...run, pageCount: pages.length }));
+}
+
 const AI_PROVIDERS = ['openai', 'gemini'];
+// Enough of a key to tell keys apart (prefix + last 4), never enough to use it.
+function keyHint(key) {
+  if (!key) return '';
+  return key.length > 14 ? `${key.slice(0, 7)}…${key.slice(-4)}` : `${key.slice(0, 3)}…`;
+}
 function aiSettings() {
   const saved = read().aiSettings || {};
   return { defaultProvider: saved.defaultProvider || 'openai', providers: Object.fromEntries(AI_PROVIDERS.map(name => [name, {
@@ -210,7 +232,9 @@ function aiSettings() {
     models: require('./ai').availableModels[name],
     defaultModel: require('./ai').getDefaultModel(name),
     hasSavedKey: Boolean(saved.providers?.[name]?.apiKey),
-    hasEnvironmentKey: Boolean(process.env[`${name.toUpperCase()}_API_KEY`])
+    savedKeyHint: keyHint(decrypt(saved.providers?.[name]?.apiKey)),
+    hasEnvironmentKey: Boolean(process.env[`${name.toUpperCase()}_API_KEY`]),
+    environmentKeyHint: keyHint(process.env[`${name.toUpperCase()}_API_KEY`])
   }])) };
 }
 function saveAISettings(input) {
@@ -239,15 +263,16 @@ function resolveAIOptions(options = {}) {
   const provider = options.provider || saved.defaultProvider || 'openai';
   if (!AI_PROVIDERS.includes(provider)) throw new Error('Unsupported AI provider.');
   const settings = saved.providers?.[provider] || {};
-  const apiKey = options.apiKey?.trim() || decrypt(settings.apiKey) || process.env[`${provider.toUpperCase()}_API_KEY`];
+  const sources = [['run-only key', options.apiKey?.trim()], ['saved key', decrypt(settings.apiKey)], ['environment key', process.env[`${provider.toUpperCase()}_API_KEY`]]];
+  const [keySource, apiKey] = sources.find(([, key]) => key) || [];
   if (!apiKey) throw new Error('Save an API key in AI Settings before generating with AI.');
-  return { provider, model: options.model || settings.model || undefined, apiKey };
+  return { provider, model: options.model || settings.model || undefined, apiKey, keySource, keyHint: keyHint(apiKey) };
 }
 
 module.exports = {
-  aiSettings, saveAISettings, resolveAIOptions,
-  createSite, updateSite, getSite, listSites, deleteSite, updateConnectionStatus,
-  createRun, updateRun, getRun, listRuns
+  keyHint, aiSettings, saveAISettings, resolveAIOptions,
+  createSite, updateSite, setProfile, getSite, listSites, deleteSite, updateConnectionStatus,
+  createRun, updateRun, getRun, listRuns, listRunSummaries
 };
 
 // A stopped process cannot resume an in-memory operation. Preserve results and allow a retry.

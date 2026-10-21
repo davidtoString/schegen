@@ -7,6 +7,8 @@ const scraper = require('../services/pageScraper');
 const schemas = require('../services/pageSchema');
 const decisions = require('../services/schemaDecision');
 const backups = require('../services/backupStore');
+const profiles = require('../services/businessProfile');
+const builder = require('../services/schemaBuilder');
 const { isDeepStrictEqual: equal } = require('node:util');
 const router = express.Router();
 const busySites = new Set();
@@ -20,6 +22,15 @@ function clientFor(site) {
   return connector.create(site);
 }
 function schemaPolicyKind(proposed) { return proposed === null ? 'removed' : 'published'; }
+// What the browser needs per page for the table; full crawled data loads on Review (GET /runs/:id/page).
+function runView(run) {
+  if (!run) return run;
+  const siteUrl = store.getSite(run.siteId)?.url;
+  return { ...run, pages: run.pages.map(({ pageData, ...page }) => ({ ...page, kind: siteUrl ? builder.classify({ ...page, pageData }, siteUrl) : undefined, ...(pageData ? { pageData: {
+    canonical: pageData.canonical, fetchedVia: pageData.fetchedVia, fetchWarning: pageData.fetchWarning, existingSchemaCount: pageData.existingSchema?.length || 0
+  } } : {}) })) };
+}
+function siteView(site) { return site && { ...site, rules: builder.rulesFor(site.rules), profileGaps: site.profile ? profiles.gaps(site.profile) : null }; }
 function lock(id) { if (busySites.has(id)) fail('This site already has an operation running.', 409); busySites.add(id); }
 function summary(pages) { return {
   discovered: pages.length, crawled: pages.filter(p => p.pageData).length,
@@ -53,7 +64,10 @@ router.get('/sites', (req, res) => res.json({ success: true, sites: store.listSi
 router.post('/sites', route(async (req, res) => res.status(201).json({ success: true, site: store.createSite(req.body) })));
 router.get('/sites/:id', route(async (req, res) => {
   siteFor(req.params.id);
-  res.json({ success: true, site: store.getSite(req.params.id), runs: store.listRuns(req.params.id) });
+  const runs = store.listRunSummaries(req.params.id);
+  // ?run=<id|latest> also returns that one run in full, so selecting a site is a single request.
+  const wanted = req.query.run === 'latest' ? runs[0]?.id : runs.some(run => run.id === req.query.run) ? req.query.run : req.query.run ? runs[0]?.id : null;
+  res.json({ success: true, site: siteView(store.getSite(req.params.id)), runs, ...(wanted ? { run: runView(store.getRun(wanted)) } : {}) });
 }));
 router.put('/sites/:id', route(async (req, res) => {
   siteFor(req.params.id);
@@ -187,15 +201,21 @@ router.post('/runs/:id/recrawl', route(async (req, res) => {
   });
   res.status(202).json({ success: true, runId: run.id });
 }));
-router.get('/runs', (req, res) => res.json({ success: true, runs: store.listRuns(req.query.siteId) }));
-router.get('/runs/:id', route(async (req, res) => res.json({ success: true, run: runFor(req.params.id) })));
+router.get('/runs', (req, res) => res.json({ success: true, runs: store.listRunSummaries(req.query.siteId) }));
+router.get('/runs/:id', route(async (req, res) => res.json({ success: true, run: runView(runFor(req.params.id)) })));
+router.get('/runs/:id/page', route(async (req, res) => {
+  const page = runFor(req.params.id).pages.find(item => item.url === req.query.url) || fail('Page not found in this run.', 404);
+  res.json({ success: true, page });
+}));
 router.post('/runs/:id/generate', route(async (req, res) => {
   const run = runFor(req.params.id);
   const pages = select(run, req.body.urls);
   if (pages.some(p => !p.pageData)) fail('Crawl selected pages successfully before generating schema.');
-  let aiOptions;
-  try { aiOptions = store.resolveAIOptions(req.body); } catch (error) { fail(error.message); }
+  const engine = req.body.engine === 'ai' ? 'ai' : 'rules';
   const site = siteFor(run.siteId);
+  let aiOptions;
+  if (engine === 'ai') { try { aiOptions = store.resolveAIOptions(req.body); } catch (error) { fail(error.message); } }
+  else if (!site.profile?.name) fail('Set up the business profile first: open Business profile, click Detect from site, check it and save.');
   const fallbackImage = site.organization?.image || '';
   // Per-page plan (chosen schema types + notes), else the run-wide default, else "AI chooses".
   const plans = req.body.plans && typeof req.body.plans === 'object' ? req.body.plans : {};
@@ -209,13 +229,25 @@ router.post('/runs/:id/generate', route(async (req, res) => {
         try {
           // Only fills a gap left by the crawler; never overrides a page's own detected image.
           const pageData = fallbackImage && !page.pageData.featuredImage ? { ...page.pageData, featuredImage: fallbackImage } : page.pageData;
-          const plan = planFor(page);
-          updatePage(run.id, page.url, { schemaPlan: plan });
-          const { schema, missing } = schemas.applyPlan(await schemas.generateAI(pageData, aiOptions, plan), plan, page.pageData);
-          const validation = schemas.validate(schema, page.pageData);
-          if (missing.length) validation.warnings.push(`No evidence on the page for: ${missing.join(', ')}. Those types were left out.`);
-          backups.save(site, 'generated', page.url, { schema, plan, validation });
-          updatePage(run.id, page.url, { schema, validation, generation: { engine: 'ai', provider: aiOptions.provider, model: aiOptions.model || require('../services/ai').getDefaultModel(aiOptions.provider) }, status: validation.valid ? 'generated' : 'invalid', schemaTypes: schema['@graph']?.flatMap(n => n['@type']) || [], generatedAt: new Date().toISOString() });
+          let schema; let validation; let plan;
+          if (engine === 'rules') {
+            // Rules keep their own per-page override; plans picked for the AI don't carry over.
+            plan = Object.hasOwn(plans, page.url) ? schemas.cleanPlan(plans[page.url]) : page.rulesPlan || null;
+            updatePage(run.id, page.url, { rulesPlan: plan?.types.length ? plan : null });
+            const built = builder.build(pageData, { siteUrl: site.url, profile: site.profile, rules: site.rules, plan, pages: run.pages });
+            schema = built.schema;
+            validation = schemas.validate(schema, page.pageData, { skipBusiness: true });
+            validation.warnings.push(...built.missing.map(item => `Left out ${item}.`));
+          } else {
+            plan = planFor(page);
+            updatePage(run.id, page.url, { schemaPlan: plan });
+            const generated = await schemas.generatePlanned(pageData, aiOptions, plan);
+            schema = generated.schema;
+            validation = schemas.validate(schema, page.pageData);
+            if (generated.missing.length) validation.warnings.push(`The AI did not produce: ${generated.missing.join(', ')} (after a second attempt). Regenerate this page, or choose a stronger model.`);
+          }
+          backups.save(site, 'generated', page.url, { schema, plan, validation, engine });
+          updatePage(run.id, page.url, { schema, validation, generation: engine === 'rules' ? { engine: 'rules' } : { engine: 'ai', provider: aiOptions.provider, model: aiOptions.model || require('../services/ai').getDefaultModel(aiOptions.provider), keySource: aiOptions.keySource, keyHint: aiOptions.keyHint }, status: validation.valid ? 'generated' : 'invalid', schemaTypes: schema['@graph']?.flatMap(n => n['@type']) || [], generatedAt: new Date().toISOString() });
         } catch (error) { updatePage(run.id, page.url, { status: 'failed', error: aiOptions?.apiKey ? error.message.split(aiOptions.apiKey).join('[redacted]') : error.message }); }
       }
       store.updateRun(run.id, { status: 'completed' });
@@ -307,7 +339,7 @@ router.post('/runs/:id/rollback', route(async (req, res) => {
         updatePage(run.id, page.url, { publishError: error.message, rollbackHistory: [...(page.rollbackHistory || []), result] });
       }
     }
-    res.json({ success: results.every(result => result.restored), results, run: runFor(run.id) });
+    res.json({ success: results.every(result => result.restored), results, run: runView(runFor(run.id)) });
   } finally { busySites.delete(site.id); }
 }));
 router.post('/runs/:id/verify', route(async (req, res) => {
@@ -322,11 +354,29 @@ router.post('/runs/:id/verify', route(async (req, res) => {
       const result = removal ? { verified: (await client.inspectPublic(page.url)).length === 0, verificationMessage: 'Removal checked against the current public page; any remaining markup requires cache/plugin review.' } : await client.verify(page.url, page.schema);
       updatePage(run.id, page.url, { status: removal ? 'schema_removed' : result.verified ? 'published' : 'verification_pending', publishResult: { ...page.publishResult, ...result } });
     }
-    res.json({ success: true, run: runFor(run.id) });
+    res.json({ success: true, run: runView(runFor(run.id)) });
   } finally { busySites.delete(run.siteId); }
 }));
 const scriptTag = schema => `<script type="application/ld+json">\n${JSON.stringify(schema, null, 2).replace(/</g, '\\u003c')}\n</script>`;
-router.get('/schema-types', (req, res) => res.json({ success: true, types: schemas.SCHEMA_TYPES }));
+router.get('/schema-types', (req, res) => res.json({ success: true, types: schemas.SCHEMA_TYPES, kinds: builder.KINDS, buildable: builder.BUILDABLE, businessTypes: profiles.BUSINESS_TYPES }));
+// Suggest a business profile from the site (not saved until the user confirms it).
+router.post('/sites/:id/profile/detect', route(async (req, res) => {
+  const site = siteFor(req.params.id);
+  const pages = store.listRuns(site.id, 5).flatMap(run => run.pages).filter(page => page.pageData);
+  const client = optionalClient(site);
+  let homepageHtml = '';
+  try { homepageHtml = await scraper.fetchHtml(site.url); }
+  catch { try { homepageHtml = client ? await client.fetchContent({ url: `${site.url}/` }) : ''; } catch { /* Detect from crawled pages only. */ } }
+  const siteName = client ? await client.siteName() : '';
+  res.json({ success: true, profile: profiles.detect({ siteUrl: site.url, homepageHtml, siteName, pages }), crawledPages: pages.length });
+}));
+router.put('/sites/:id/profile', route(async (req, res) => {
+  siteFor(req.params.id);
+  const profile = profiles.normalize(req.body.profile);
+  if (!profile.name) fail('The business name is required.');
+  const rules = req.body.rules ? builder.rulesFor(req.body.rules) : undefined;
+  res.json({ success: true, site: siteView(store.setProfile(req.params.id, profile, rules)) });
+}));
 // Generated schema for a header/footer code plugin (WPCode, Insert Headers and Footers, …) or a manual paste.
 router.get('/runs/:id/export', route(async (req, res) => {
   const run = runFor(req.params.id);

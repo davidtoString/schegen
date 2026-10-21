@@ -22,7 +22,7 @@ test('all primary tabs render the same persistent workspace; legacy routes no lo
     assert.doesNotMatch(html, /src="\/js\/app.js"/);
     assert.doesNotMatch(html, />Advanced Generator</);
     assert.doesNotMatch(html, /1\. Crawl\. 2\. Create schema|Connect each WordPress site once/);
-    assert.match(html, /class="workspace-toolbar"/);
+    assert.match(html, /<aside class="sidebar">[\s\S]*id="site-list"[\s\S]*id="open-ai-settings"/);
     assert.match(html, /Choose a sitemap or specific URLs/);
   }
   for (const route of ['/legacy/generator', '/legacy/results']) {

@@ -2,6 +2,33 @@
 
 All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
 
+## [3.2.0] - 2026-10-21
+
+### Added
+- **Rule-based schema (new default, no AI).** Each site has a **business profile** (detected from the site, confirmed once) and **page rules** (which types each kind of page gets). Pages are sorted into kinds (home, service, service-area, listing, about, contact, blog, utility) and get the business, website, page, breadcrumbs, Service and verbatim FAQs, all linked. It's instant, free and identical every run. Strickland: 77/77 crawled pages build valid schema.
+- **Completeness checks** for what Google needs per type, on both engines; profile gaps are shown once on the profile card.
+- **Masked API key previews** (first 7 + last 4 characters) in AI Settings and the Review step; each AI-generated page records which key was used.
+
+### Changed
+- AI is now optional: choose **Rules** or **AI** in the Review step. AI Settings are only needed for AI.
+
+## [3.1.1] - 2026-10-21
+
+### Fixed
+- **Chosen schema types were dropped** (e.g. FAQPage + Service produced only FAQPage on a third of Strickland's pages). The prompt told the model to build a "complete page graph" while the type choice came first and was easy to ignore; the filter then removed everything but FAQPage. Chosen types are now a hard requirement stated after the page data, with per-type guidance, plus one repair call for any type still missing.
+- Service names are the plain service ("AC Installation"), not the marketing headline or SEO title.
+- Preview/publish errors show WordPress's reason instead of "Request failed with status code 404".
+- A page whose node lacks the exact page URL (trailing slash, dropped `url`) no longer fails validation.
+
+### Changed
+- Default models: **gpt-4.1-mini** (was gpt-4.1-nano) and **gemini-2.5-flash** (was flash-lite).
+- Removed the two warnings shown on every page ("Local checks do not certify…", "Existing JSON-LD detected…"); the publish preview already covers existing schema.
+- Pages whose canonical URL points elsewhere start unchecked.
+- **In-app guide rewritten** ("How it works" in the sidebar, also linked from the empty state) to match the current flow.
+- **New layout:** ElevenLabs-style shell with a left sidebar (sites, AI Settings, plugin, Help, theme, account), monochrome light and dark themes that follow the system setting, wizard tabs, and a slimmer table, history and dialogs. The old stylesheet was replaced.
+- Removed the "Instructions for the AI" field from the type picker and the per-page Types pop-up; chosen types alone drive generation.
+- **Faster site switching:** selecting a site is one request that returns run history without page data, plus the chosen run with a light per-page summary; crawled content loads when Review is opened. Strickland went from 1.8 MB to about 190 KB per click, and progress polling during runs shrank the same way. The sidebar highlights the new site immediately.
+
 ## [3.1.0] - 2026-10-20
 
 ### Changed

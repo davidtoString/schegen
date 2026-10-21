@@ -71,9 +71,10 @@ test('crawl → schema → dry run → insert → public verification with a Wor
   }
   let run = await finished();
   assert.equal(run.pages[0].status, 'crawled');
-  assert.match(run.pages[0].pageData.content, /publish books/);
+  assert.equal(run.pages[0].pageData.content, undefined, 'run responses stay light');
+  assert.match((await request(`/runs/${id}/page?url=${encodeURIComponent(run.pages[0].url)}`)).page.pageData.content, /publish books/);
   const urls = run.pages.map(p => p.url);
-  assert.equal((await request(`/runs/${id}/generate`, 'POST', { urls })).code, 202);
+  assert.equal((await request(`/runs/${id}/generate`, 'POST', { urls, engine: 'ai' })).code, 202);
   run = await finished(); assert.equal(run.pages[0].validation.valid, true);
   assert.equal((await request(`/runs/${id}/publish`, 'POST', { urls: [] })).code, 400);
   assert.equal((await request(`/runs/${id}/publish`, 'POST', { urls, dryRun: false })).success, false, 'real insertion requires preview');

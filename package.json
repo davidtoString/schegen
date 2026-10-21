@@ -1,6 +1,6 @@
 {
   "name": "schematic",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Multi-site WordPress crawl, JSON-LD generation and verified publishing through REST metadata or an optional connector.",
   "main": "src/index.js",
   "scripts": {

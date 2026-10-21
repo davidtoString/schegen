@@ -4,62 +4,86 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><%= title %> · Schematic</title>
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('schema-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { /* Default light. */ }</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/css/style.css">
   <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
   <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
   <script src="/js/auth.js"></script>
 </head>
 <body>
-  <header class="header">
-    <div class="container">
-      <h1 class="logo"><img src="/img/favicon.svg" class="logo-mark" alt="">Schematic</h1>
-      <nav class="nav">
-        <% if (typeof currentUser !== 'undefined' && currentUser) { %>
-        <form method="post" action="/logout" class="logout-form">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-          <span><%= currentUser %></span>
-          <button class="btn btn-secondary" type="submit">Sign out</button>
-        </form>
-        <% } %>
-        <button class="btn btn-secondary" id="open-help">Help</button>
-        <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode">
-          <span class="icon">🌙</span>
-          <span class="label">Dark</span>
-        </button>
-      </nav>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><img src="/img/favicon.svg" class="logo-mark" alt=""><span>Schematic</span></div>
+    <button class="btn btn-primary btn-block" id="add-site"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add site</button>
+    <div class="sidebar-section"><span>Sites</span><span id="site-count" class="count-pill">0</span></div>
+    <nav id="site-list" class="site-list" aria-label="Sites"><p class="muted">Loading sites…</p></nav>
+    <div class="sidebar-footer">
+      <button class="nav-item" id="open-ai-settings"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 1.9 1.9.8-1.9.8L19 20.4l-.8-1.9-1.9-.8 1.9-.8z"/></svg>AI Settings</button>
+      <a class="nav-item" href="/api/workspaces/connector" download><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"/></svg>Download plugin</a>
+      <button class="nav-item" id="open-help"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17.5h.01"/></svg>How it works</button>
+      <button class="nav-item theme-toggle" id="theme-toggle" title="Switch light/dark mode"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g></svg><span class="label">Dark mode</span></button>
+      <% if (typeof currentUser !== 'undefined' && currentUser) { %>
+      <form method="post" action="/logout" class="sidebar-user">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <span class="user-avatar"><%= String(currentUser).slice(0, 1).toUpperCase() %></span>
+        <span class="user-name"><%= currentUser %></span>
+        <button class="icon-button" type="submit" title="Sign out" aria-label="Sign out"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h10"/></svg></button>
+      </form>
+      <% } %>
     </div>
-  </header>
+  </aside>
 
-  <dialog id="help-dialog" class="site-dialog">
-    <div style="padding:1.5rem">
+  <dialog id="help-dialog" class="site-dialog help-dialog">
+    <div class="dialog-body">
       <div class="dialog-heading">
-        <div><span class="eyebrow">GUIDE</span><h2>How this works</h2></div>
-        <button type="button" class="icon-button" id="close-help">×</button>
+        <div><span class="eyebrow">Guide</span><h2>How Schematic works</h2></div>
+        <button type="button" class="icon-button" id="close-help" aria-label="Close">×</button>
       </div>
+      <p>Schematic reads your WordPress pages, builds JSON-LD schema for them from your business profile and page rules (AI is optional), and puts it on the live site through Rank Math. You review everything before it goes live, any change can be undone, and every version is backed up.</p>
 
-      <h3>1. Connect a site</h3>
-      <p>Download the <strong>Schematic Connector</strong> plugin from the toolbar, install and activate it on the WordPress site. Click <strong>Add site</strong> and enter the WordPress URL and an Application Password (WordPress → Users → Profile → Application Passwords). The connector is what makes replace/remove of existing schema reversible.</p>
-      <p class="muted">Optionally set a <strong>default schema image</strong> in site settings — used only on pages that don't have their own image.</p>
+      <h3>Before you start (once per site)</h3>
+      <ol>
+        <li><strong>Add site</strong>: the WordPress address, a username and an <strong>Application Password</strong> (WordPress → Users → Profile → Application Passwords). A user with the Editor role is enough.</li>
+        <li><strong>Download plugin</strong> and install the <strong>Schematic Connector</strong> on that WordPress site, then click <strong>Test connection</strong>.</li>
+        <li><strong>Business profile</strong> (on the site page): it fills itself in from the site. Check the name, phone, address, logo, hours and service areas and save. Every page links to these details. <strong>Page rules</strong> in the same window set which schema each kind of page gets.</li>
+        <li>Optional: <strong>AI Settings</strong>, only if you want to use AI. Save an OpenAI or Gemini key; the start and end of the saved key are shown so you can tell keys apart.</li>
+      </ol>
 
-      <h3>2. Save your AI key</h3>
-      <p>Click <strong>AI Settings</strong> and paste your OpenAI or Gemini API key. Schema generation always uses AI — there is no non-AI fallback.</p>
+      <h3>1. Pages: find and read the site</h3>
+      <p>Click <strong>Crawl site</strong>. Schematic finds pages from WordPress itself, then the sitemap, then links on the homepage. You can also paste a sitemap or specific URLs. It then reads each page. If the site's firewall blocks a page, the content is read through WordPress instead. Pages that still fail can be retried with <strong>Retry failed pages</strong>. Check the pages you want to work on.</p>
 
-      <h3>3. Work through the wizard</h3>
+      <h3>2. Action: create or delete</h3>
+      <p><strong>Create new schema</strong> writes new schema for the checked pages. <strong>Delete existing schema</strong> removes it (and can be undone).</p>
+
+      <h3>3. Review: generate</h3>
+      <p>Choose <strong>Rules</strong> (recommended: instant, free, copied exactly from the page) or <strong>AI</strong>, then click <strong>Generate schema</strong>.</p>
       <ul>
-        <li><strong>Pages</strong> — click <strong>Crawl site</strong> to discover pages (WordPress, sitemap, homepage links, or pasted URLs), then check which ones to work with. If a site's firewall blocks a page, it is read through the WordPress API instead; anything still failing can be retried with <strong>Retry failed pages</strong>.</li>
-        <li><strong>Action</strong> — choose <strong>Create new schema</strong> (AI generates JSON-LD) or <strong>Delete existing schema</strong> (removes app-published schema), for the pages you selected.</li>
-        <li><strong>Review</strong> — for Create, pick the <strong>schema types</strong> you want (or let the AI choose), use <strong>Types</strong> on a row to set one page differently, then click Generate; for Delete, removal is already previewed. Either way, open <strong>Review</strong> on any page to see the exact before/after JSON-LD.</li>
-        <li><strong>Apply</strong> — check the acknowledgement box and click Apply. Nothing is written to WordPress before this step.</li>
+        <li><strong>Rules</strong>: each page gets the business, the website, a page entry and what its kind is set to in Page rules. For example, a service page gets breadcrumbs, a Service named after the page ("Furnace Repair") and its FAQs. Each row shows the page's kind; <strong>Types</strong> changes one page.</li>
+        <li><strong>AI</strong>: pick types in the picker (or let the AI choose). The app keeps only those types and retries once if one is missing.</li>
       </ul>
-      <p class="muted">The page list stays visible below the wizard at every step, and the step indicator lets you jump back to any step you've already completed.</p>
+      <p>Every page is checked for what Google needs (FAQs with answers, a named service, complete breadcrumbs). A preview of the WordPress change runs automatically. Open <strong>Review</strong> on any row to see the schema, what the page has now, and the before/after.</p>
+      <p class="muted">Choose what happens to schema a page already has: replace Rank Math's schema for that page (default), add yours alongside it, replace only Schematic's earlier schema, or skip pages that already have some.</p>
 
-      <h3>4. After applying</h3>
+      <h3>4. Apply: publish to the site</h3>
+      <p>Tick <strong>I reviewed the before/after</strong> and click <strong>Apply</strong>. Nothing is written to WordPress before this step. The plugin adds the schema to Rank Math's output for each page, and Schematic checks the live page afterwards.</p>
       <ul>
-        <li><strong>Verify live pages</strong> — re-checks the actual public page for the JSON-LD.</li>
-        <li><strong>Undo last change</strong> — restores the previous state, including the original Rank Math output, for selected pages.</li>
-        <li><strong>Run history</strong> — keeps every past run for the site so you can revisit it.</li>
-        <li><strong>Header code plugin</strong> — download the JSON-LD as ready-to-paste <code>&lt;script&gt;</code> tags or JSON, or copy one page's from its Review window.</li>
-        <li><strong>Backups</strong> — every page's original schema, each generated version, and every WordPress change are saved on the server. <strong>Download all backups</strong> gets them as one file.</li>
+        <li><strong>Verify live pages</strong>: re-check the public pages later, for example after clearing a cache.</li>
+        <li><strong>Undo last change</strong>: restore the previous schema, including Rank Math's own.</li>
+      </ul>
+
+      <h3>Using a header code plugin instead</h3>
+      <p>In the Apply step, <strong>Download &lt;script&gt; tags</strong> or <strong>Download JSON</strong> for the checked pages, or open <strong>Review</strong> on a row and use <strong>Copy &lt;script&gt; tag</strong>. Paste it into WPCode, Insert Headers and Footers or a similar plugin. Don't also apply it with Schematic, or the page will carry it twice.</p>
+
+      <h3>Backups and history</h3>
+      <p>Every page's original schema, each generated version, and every publish, removal and undo is saved on the server. <strong>Download all backups</strong> (Apply step) gets them in one file. <strong>Run history</strong> at the bottom of a site lets you reopen any earlier run.</p>
+
+      <h3>Good to know</h3>
+      <ul>
+        <li>Pages whose canonical URL points to another page start unchecked: search engines ignore schema there.</li>
+        <li>The business profile card shows anything missing that Google needs for local results (like a full street address) and what is worth adding.</li>
+        <li>Statuses: <span class="status-dot generated">generated</span> ready, <span class="status-dot generating">generating</span> working, <span class="status-dot failed">failed</span> needs attention. Hover or open Review for the reason.</li>
       </ul>
 
       <div class="dialog-actions"><button type="button" class="btn btn-primary" id="close-help-footer">Got it</button></div>
@@ -67,4 +91,4 @@
   </dialog>
 
   <main class="main">
-    <div class="container">
+    <div class="main-inner">

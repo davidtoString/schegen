@@ -1,22 +1,11 @@
 <%- include('partials/header') %>
 
-<div class="workspace-toolbar">
-  <h2>Sites</h2>
-  <div class="summary-actions"><a class="btn btn-secondary" href="/api/workspaces/connector" download>Download plugin</a><button id="open-ai-settings" class="btn btn-secondary">AI Settings</button><button class="btn btn-primary" id="add-site">Add site</button></div>
-</div>
 <div id="workspace-alert" class="workspace-alert" role="status" hidden></div>
-<p id="workflow-guide" class="workspace-guide" role="status">Add your site and configure AI Settings to begin.</p>
 
-<section class="workspace-grid">
-  <aside class="site-rail card">
-    <div class="section-heading"><h3>Sites</h3><span id="site-count" class="count-pill">0</span></div>
-    <div id="site-list" class="site-list"><p class="muted">Loading sites…</p></div>
-  </aside>
-
-  <div class="workspace-main">
-    <section id="empty-state" class="card empty-state">
-      <h3>Add your first site</h3>
-      <p>Install the Schematic Connector plugin on WordPress, then connect it here.</p>
+    <section id="empty-state" class="empty-state">
+      <div class="empty-icon"><img src="/img/favicon.svg" alt=""></div>
+      <h1>Add your first site</h1>
+      <p>Install the Schematic Connector plugin on WordPress, then connect it here. New here? Read <a href="#" data-action="open-help">how Schematic works</a>.</p>
       <div class="summary-actions" style="justify-content:center">
         <a class="btn btn-secondary" href="/api/workspaces/connector" download>Download plugin</a>
         <button class="btn btn-primary" data-action="new-site">Connect WordPress</button>
@@ -24,14 +13,23 @@
     </section>
 
     <section id="site-panel" hidden>
-      <div class="card site-summary">
-        <div><h2 id="active-site-name"></h2><a id="active-site-url" target="_blank" rel="noopener"></a></div>
+      <header class="page-header">
+        <div><h1 id="active-site-name"></h1><a id="active-site-url" target="_blank" rel="noopener"></a></div>
         <div class="summary-actions">
           <span id="connection-badge" class="status-badge">Untested</span>
           <button class="btn btn-secondary" id="test-site">Test connection</button>
           <button class="btn btn-secondary" id="edit-site">Site settings</button>
         </div>
-      </div>
+      </header>
+      <p id="workflow-guide" class="workspace-guide" role="status">Add your site and configure AI Settings to begin.</p>
+
+      <section class="card profile-card" id="profile-card">
+        <div class="section-heading">
+          <div><h3>Business profile</h3><p class="muted" id="profile-summary">Not set up yet.</p></div>
+          <button class="btn btn-secondary" id="edit-profile">Edit profile</button>
+        </div>
+        <p id="profile-gaps" class="profile-gaps" hidden></p>
+      </section>
 
       <nav class="wizard-steps" aria-label="Workflow steps">
         <button type="button" class="wizard-step" data-step="pages"><span class="wizard-step-number">1</span><span class="wizard-step-label">Pages</span></button>
@@ -77,25 +75,27 @@
       <section class="card step-card" data-wizard-step="review" hidden>
         <div id="review-create-panel">
           <h3>Generate schema</h3>
-          <p class="muted">AI is always used. There is no basic-generation fallback.</p>
-          <div id="ai-fields">
+          <div class="engine-choice" role="radiogroup" aria-label="How to build the schema">
+            <label class="engine-option"><input type="radio" name="engine" value="rules" checked><span><strong>Rules</strong><small>Instant and free. Built from the business profile and page rules, copied exactly from the page.</small></span></label>
+            <label class="engine-option"><input type="radio" name="engine" value="ai"><span><strong>AI</strong><small>Slower, costs per page. For types the rules can't build.</small></span></label>
+          </div>
+          <p class="muted" id="rules-hint">Each page gets the types its kind is set to in <strong>Business profile → Page rules</strong>. Use <strong>Types</strong> on a row to change one page.</p>
+          <div id="ai-fields" hidden>
             <label for="ai-provider">Provider</label><select id="ai-provider"><option value="openai">OpenAI</option><option value="gemini">Gemini</option></select>
             <p id="ai-configuration-status" class="muted"></p>
             <label for="ai-model-choice">Model</label><select id="ai-model-choice"><option value="">Loading model settings…</option></select>
             <label id="ai-model-custom" hidden>Custom model ID<input id="ai-model" placeholder="Exact model ID for this provider"></label>
             <details class="workspace-options"><summary>Use a different API key for this run</summary><label for="ai-key">API key <small>(not saved)</small></label><input id="ai-key" type="password" autocomplete="off" placeholder="Use saved key from AI Settings"></details>
           </div>
-          <fieldset class="type-picker">
+          <fieldset class="type-picker" id="ai-type-picker" hidden>
             <legend>Schema types to generate</legend>
             <p class="muted">Pick the types for the selected pages, or leave all unchecked to let the AI choose. Use <strong>Types</strong> on a row to set one page differently.</p>
             <div id="type-options" class="type-options"></div>
             <label for="type-custom">Other schema.org types <small>(optional, comma-separated)</small></label>
             <input id="type-custom" placeholder="e.g. HVACBusiness, Plumber">
-            <label for="type-notes">Instructions for the AI <small>(optional)</small></label>
-            <textarea id="type-notes" rows="2" placeholder="e.g. Service area is Starkville and Columbus, MS. Use the FAQ section only."></textarea>
             <button type="button" class="btn btn-secondary" id="apply-types">Use these types for selected pages</button>
           </fieldset>
-          <button class="btn btn-primary" id="generate-run" disabled>Generate AI schema</button>
+          <button class="btn btn-primary" id="generate-run" disabled>Generate schema</button>
         </div>
         <div id="review-delete-panel" hidden>
           <h3>Confirm removal</h3>
@@ -104,7 +104,7 @@
         <div id="schema-policy-group">
           <label for="schema-policy">If a page already has schema</label>
           <select id="schema-policy">
-            <option value="replace-existing">Replace it with the new AI schema</option>
+            <option value="replace-existing">Replace it with the new schema</option>
             <option value="keep">Keep existing — skip pages that already have schema</option>
             <option value="replace-managed">Replace only the app's previous schema</option>
             <option value="remove-existing" hidden>Remove schema from this page</option>
@@ -153,12 +153,10 @@
         <div id="run-history"><p class="muted">No recorded runs.</p></div>
       </section>
     </section>
-  </div>
-</section>
 
 <dialog id="site-dialog" class="site-dialog">
-  <form id="site-form" method="dialog">
-    <div class="dialog-heading"><div><span class="eyebrow">SITE REGISTRATION</span><h2 id="site-dialog-title">Register a site</h2></div><button type="button" class="icon-button" id="close-dialog">×</button></div>
+  <form id="site-form" method="dialog" class="dialog-body">
+    <div class="dialog-heading"><div><span class="eyebrow">Site registration</span><h2 id="site-dialog-title">Register a site</h2></div><button type="button" class="icon-button" id="close-dialog">×</button></div>
     <input type="hidden" id="site-id">
     <div class="form-grid">
       <label>Site name<input id="site-name" required placeholder="Acme Heating"></label>
@@ -177,9 +175,8 @@
 </dialog>
 
 <dialog id="schema-dialog" class="site-dialog">
-  <div style="padding:1.5rem">
-    <button id="close-schema" class="btn btn-secondary">Close</button>
-    <h2>Schema and crawl review</h2>
+  <div class="dialog-body">
+    <div class="dialog-heading"><h2>Schema and crawl review</h2><button id="close-schema" class="icon-button" aria-label="Close">×</button></div>
     <p id="schema-review-url"></p>
     <pre id="schema-review-messages" style="white-space:pre-wrap"></pre>
     <h3>Generated JSON-LD</h3>
@@ -193,19 +190,48 @@
   </div>
 </dialog>
 
+<dialog id="profile-dialog" class="site-dialog">
+  <form id="profile-form" class="dialog-body">
+    <div class="dialog-heading"><div><span class="eyebrow">Used on every page</span><h2>Business profile</h2></div><button type="button" class="icon-button" id="close-profile" aria-label="Close">×</button></div>
+    <p>Enter the business details once; every page links to them. <strong>Detect from site</strong> fills this in from the site's existing schema, homepage and page titles. Check it before saving.</p>
+    <div class="summary-actions" style="margin-top:.5rem"><button type="button" class="btn btn-secondary" id="detect-profile">Detect from site</button><span class="muted" id="profile-message" role="status"></span></div>
+    <div class="form-grid">
+      <label>Business name<input id="pf-name" required></label>
+      <label>Business type<input id="pf-type" list="business-types" placeholder="HVACBusiness"><datalist id="business-types"></datalist></label>
+      <label>Phone<input id="pf-telephone"></label>
+      <label>Email<input id="pf-email" type="email"></label>
+      <label>Logo URL<input id="pf-logo" type="url"></label>
+      <label>Photo URL <small>(optional)</small><input id="pf-image" type="url"></label>
+      <label>Street address<input id="pf-street"></label>
+      <label>City<input id="pf-city"></label>
+      <label>State<input id="pf-region"></label>
+      <label>ZIP<input id="pf-postal"></label>
+      <label>Country<input id="pf-country" placeholder="US"></label>
+      <label>Price range <small>(optional, e.g. $$)</small><input id="pf-price"></label>
+    </div>
+    <label>Opening hours <small>(one per line, e.g. Mo-Fr 08:00-17:00)</small><textarea id="pf-hours" rows="2"></textarea></label>
+    <label>Service areas <small>(cities, comma or line separated)</small><textarea id="pf-areas" rows="2"></textarea></label>
+    <label>Social and review profiles <small>(one URL per line)</small><textarea id="pf-sameas" rows="2"></textarea></label>
+    <label>Short description <small>(optional)</small><textarea id="pf-description" rows="2"></textarea></label>
+    <h3>Page rules</h3>
+    <p>Which schema each kind of page gets. Every page also gets the business, the website and a page entry.</p>
+    <div class="pages-table rules-table"><table><thead><tr id="rules-head"></tr></thead><tbody id="rules-body"></tbody></table></div>
+    <div class="dialog-actions"><button type="button" class="btn btn-secondary" id="cancel-profile">Cancel</button><button type="submit" class="btn btn-primary">Save profile</button></div>
+  </form>
+</dialog>
+
 <dialog id="plan-dialog" class="site-dialog">
-  <form id="plan-form" method="dialog" style="padding:1.5rem">
+  <form id="plan-form" method="dialog" class="dialog-body">
     <h2>Schema types for this page</h2>
     <p id="plan-url" class="muted"></p>
     <div id="plan-type-options" class="type-options"></div>
     <label>Other schema.org types <small>(comma-separated)</small><input id="plan-custom"></label>
-    <label>Instructions for the AI<textarea id="plan-notes" rows="3"></textarea></label>
     <div class="dialog-actions"><button type="button" class="btn btn-secondary" id="plan-auto">Let AI choose</button><button type="button" class="btn btn-secondary" id="plan-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
   </form>
 </dialog>
 
 <dialog id="ai-settings-dialog" class="site-dialog">
-  <form id="ai-settings-form">
+  <form id="ai-settings-form" class="dialog-body">
     <h2>AI Settings</h2>
     <p>Shared across your workspace sites. Keys are encrypted on the server, never returned to the browser, and take effect without a restart. Anyone with dashboard access can use these keys for generation.</p>
     <p id="ai-settings-message" role="status"></p>
@@ -223,10 +249,10 @@
   </form>
 </dialog>
 
-<script src="/js/modelPicker.js"></script>
-<script src="/js/workspace.js"></script>
     </div>
   </main>
-  <footer class="footer"><div class="container"><p>Schematic · One site, one run, from crawl to publication</p></div></footer>
+</div>
+<script src="/js/modelPicker.js"></script>
+<script src="/js/workspace.js"></script>
 </body>
 </html>

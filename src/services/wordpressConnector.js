@@ -16,6 +16,12 @@ function create(site) {
     maxContentLength: 5 * 1024 * 1024,
     auth: { username: site.connection.username, password: site.connection.appPassword }
   });
+  // Surface WordPress's own reason (e.g. "URL is not a public published post…") instead of axios's "status code 404".
+  http.interceptors.response.use(null, error => {
+    const message = error.response?.data?.message;
+    if (message) error.message = `WordPress: ${String(message).replace(/<[^>]*>/g, '')} (HTTP ${error.response.status})`;
+    return Promise.reject(error);
+  });
   function checkUrl(url) {
     const target = new URL(url);
     if (target.origin !== base.origin || target.username || target.password) throw new Error('Page must belong to the registered site.');
@@ -76,6 +82,10 @@ function create(site) {
         if (rankMath?.head) head = rankMath.head;
       } catch { /* Headless support off or Rank Math absent. */ }
       return `<html><head>${head}</head><body class="${escapeHtml(post.type)}"><main><article><h1>${post.title?.rendered || ''}</h1>${post.content?.rendered || ''}</article></main></body></html>`;
+    },
+    // The site's own name from the REST index (Settings → General → Site Title).
+    async siteName() {
+      try { return (await http.get('')).data?.name || ''; } catch { return ''; }
     },
     async snapshot(url) {
       checkUrl(url);

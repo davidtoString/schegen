@@ -25,7 +25,8 @@ test('AI settings encrypt secrets, preserve blank keys, resolve defaults and exp
   assert.equal(settings.providers.openai.hasEnvironmentKey, true);
   const disk = fs.readFileSync(path.join(process.env.DATA_DIR, 'workspace.json'), 'utf8');
   assert.doesNotMatch(disk, /private-test-key-123/); assert.match(disk, /v1:/);
-  assert.deepEqual(store.resolveAIOptions(), { provider: 'gemini', apiKey: 'private-test-key-123', model: 'model-test' });
+  assert.deepEqual(store.resolveAIOptions(), { provider: 'gemini', apiKey: 'private-test-key-123', model: 'model-test', keySource: 'saved key', keyHint: 'private…-123' });
+  assert.equal(store.aiSettings().providers.gemini.savedKeyHint, 'private…-123', 'settings show which key is saved, masked');
   store.saveAISettings({ providers: { gemini: { apiKey: '' } } });
   assert.equal(store.resolveAIOptions().apiKey, 'private-test-key-123');
   assert.equal(store.resolveAIOptions({ apiKey: 'request-key' }).apiKey, 'request-key');
@@ -46,11 +47,13 @@ test('AI settings encrypt secrets, preserve blank keys, resolve defaults and exp
   const page = { url: 'https://example.test/about', title: 'About us', content: 'We publish books.' };
   store.updateRun(run.id, { status: 'ready', pages: [{ url: page.url, pageData: page }] });
   const generateUrl = `http://127.0.0.1:${server.address().port}/api/runs/${run.id}/generate`;
-  assert.equal((await fetch(generateUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls: [page.url], useAI: false }) })).status, 202);
+  assert.equal((await fetch(generateUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls: [page.url], engine: 'ai' }) })).status, 202);
   for (let i = 0; i < 100 && store.getRun(run.id).status === 'generating'; i++) await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(store.getRun(run.id).status, 'completed');
   assert.equal(received.apiKey, 'saved-generation-test-key');
   assert.equal(received.model, 'model-test');
-  assert.equal(store.getRun(run.id).pages[0].generation.engine, 'ai', 'AI remains mandatory even when a client sends useAI:false');
+  assert.equal(store.getRun(run.id).pages[0].generation.engine, 'ai');
+  assert.equal(store.getRun(run.id).pages[0].generation.keyHint, 'saved-g…-key', 'records which key was used, masked');
+  assert.equal(store.getRun(run.id).pages[0].generation.keySource, 'saved key');
   assert.doesNotMatch(JSON.stringify(store.getRun(run.id)), /saved-generation-test-key/);
 });

@@ -52,7 +52,7 @@ test('schema plans keep only chosen types and prune references to entities that 
   const generated = { '@context': 'https://schema.org', '@graph': [
     { '@type': 'WebPage', '@id': 'https://example.com/ac/#webpage', url: page.url },
     { '@type': 'HVACBusiness', '@id': 'https://example.com/#business', name: 'Acme', telephone: '' },
-    { '@type': 'Service', '@id': 'https://example.com/ac/#service', url: page.url, provider: { '@id': 'https://example.com/#business' }, isPartOf: { '@id': 'https://example.com/ac/#webpage' }, brand: { '@id': 'https://example.com/#organization' }, sameAs: { '@id': 'https://other.example/#thing' } },
+    { '@type': 'Service', '@id': 'https://example.com/ac/#service', name: 'AC Repair', url: page.url, provider: { '@id': 'https://example.com/#business' }, isPartOf: { '@id': 'https://example.com/ac/#webpage' }, brand: { '@id': 'https://example.com/#organization' }, sameAs: { '@id': 'https://other.example/#thing' } },
     { name: 'no type' }
   ] };
   const { schema, missing } = schemaService.applyPlan(generated, { types: ['Service', 'LocalBusiness', 'FAQPage'] }, page);
@@ -107,11 +107,18 @@ test('blocked public pages are read through the WordPress API; plans, export and
   const page = run.pages[0];
   assert.equal(page.status, 'crawled', page.error);
   assert.equal(page.pageData.fetchedVia, 'wordpress-api');
-  assert.match(page.pageData.content, /repair air conditioners/);
-  assert.equal(page.pageData.existingSchema.length, 1, 'Rank Math head supplies existing schema');
+  assert.equal(page.pageData.existingSchemaCount, 1, 'Rank Math head supplies existing schema');
+  const detail = (await request(`/runs/${id}/page?url=${encodeURIComponent(page.url)}`)).page;
+  assert.match(detail.pageData.content, /repair air conditioners/);
 
+  const siteView = await request(`/sites/${site.id}?run=latest`);
+  assert.equal(siteView.runs[0].pages, undefined, 'run history carries no page data');
+  assert.equal(siteView.runs[0].pageCount, 1);
+  assert.equal(siteView.run.id, id);
+  assert.equal(siteView.run.pages.length, 1, 'the selected run comes back in full');
+  assert.equal((await request(`/sites/${site.id}`)).run, undefined);
   const url = page.url;
-  assert.equal((await request(`/runs/${id}/generate`, 'POST', { urls: [url], plans: { [url]: { types: ['Service'], notes: 'Starkville only' } } })).code, 202);
+  assert.equal((await request(`/runs/${id}/generate`, 'POST', { urls: [url], engine: 'ai', plans: { [url]: { types: ['Service'], notes: 'Starkville only' } } })).code, 202);
   run = await finished(id);
   assert.deepEqual(plansSeen.at(-1), { types: ['Service'], notes: 'Starkville only' });
   assert.deepEqual(run.pages[0].schema['@graph'].map(node => node['@type']), ['Service']);
@@ -127,4 +134,23 @@ test('blocked public pages are read through the WordPress API; plans, export and
   const bundle = JSON.parse((await request(`/sites/${site.id}/backups`)).text);
   assert.deepEqual(bundle.map(item => item.kind).sort(), ['generated', 'original']);
   assert.ok(bundle.every(item => item.url === url));
+});
+
+test('a chosen type the AI leaves out gets one repair attempt, and a missing page URL is filled in', async () => {
+  const page = { url: 'https://example.com/furnace-repair/', title: 'Furnace Repair', content: 'We repair furnaces.' };
+  const calls = [];
+  const original = schemaService.generateAI;
+  schemaService.generateAI = async (input, options, plan, repair) => {
+    calls.push(repair);
+    const graph = [{ '@type': 'FAQPage', '@id': 'https://example.com/furnace-repair#faq', mainEntity: [{ '@type': 'Question', name: 'Q?', acceptedAnswer: { '@type': 'Answer', text: 'A.' } }] }];
+    if (repair) graph.push({ '@type': 'Service', '@id': 'https://example.com/furnace-repair#service', name: 'Furnace Repair' });
+    return { '@context': 'https://schema.org', '@graph': graph };
+  };
+  try {
+    const { schema, missing } = await schemaService.generatePlanned(page, {}, { types: ['FAQPage', 'Service'] });
+    assert.deepEqual(calls.map(call => call?.missing), [undefined, ['Service']]);
+    assert.deepEqual(missing, []);
+    assert.deepEqual(schema['@graph'].map(node => node['@type']), ['FAQPage', 'Service']);
+    assert.equal(schemaService.validate(schema, page).valid, true);
+  } finally { schemaService.generateAI = original; }
 });
