@@ -7,6 +7,9 @@ All notable changes to the Schematic project (formerly Schema Generator / Schema
 ### Added
 - Up/down scroll navigator in the bottom-right corner; each arrow shows only when there is somewhere to go. Notices now appear just above it.
 
+### Fixed
+- Updates now show up right after a deploy: CSS and JS URLs carry a content hash (`?v=…`), so Cloudflare's 4-hour browser cache can't serve stale files.
+
 ## [3.2.0] - 2026-10-21
 
 ### Added

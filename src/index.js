@@ -39,6 +39,13 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/css', express.static(path.join(__dirname, '../public/css')));
 app.use('/img', express.static(path.join(__dirname, '../public/img')));
 
+// Asset fingerprint: views add ?v=<hash> to CSS/JS URLs, so each deploy busts browser and
+// Cloudflare caches (Cloudflare tells browsers to keep static files for hours).
+app.locals.assetVersion = require('crypto').createHash('sha1')
+  .update(['css/style.css', 'js/auth.js', 'js/modelPicker.js', 'js/workspace.js'].map(file => {
+    try { return require('fs').readFileSync(path.join(__dirname, '../public', file)); } catch { return ''; }
+  }).join('')).digest('hex').slice(0, 10);
+
 // View engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
