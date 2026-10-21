@@ -267,7 +267,7 @@ router.post('/runs/:id/publish', route(async (req, res) => {
   lock(site.id);
   const results = [];
   try {
-    store.updateRun(run.id, { status: 'publishing' });
+    store.updateRun(run.id, { status: 'publishing', error: null });
     for (const page of pages) {
       try {
         const previous = await client.snapshot(page.url);
@@ -358,7 +358,7 @@ router.post('/runs/:id/verify', route(async (req, res) => {
   } finally { busySites.delete(run.siteId); }
 }));
 const scriptTag = schema => `<script type="application/ld+json">\n${JSON.stringify(schema, null, 2).replace(/</g, '\\u003c')}\n</script>`;
-router.get('/schema-types', (req, res) => res.json({ success: true, types: schemas.SCHEMA_TYPES, kinds: builder.KINDS, buildable: builder.BUILDABLE, businessTypes: profiles.BUSINESS_TYPES }));
+router.get('/schema-types', (req, res) => res.json({ success: true, types: schemas.SCHEMA_TYPES, moreTypes: schemas.MORE_SCHEMA_TYPES, kinds: builder.KINDS, buildable: builder.BUILDABLE, businessTypes: profiles.BUSINESS_TYPES }));
 // Suggest a business profile from the site (not saved until the user confirms it).
 router.post('/sites/:id/profile/detect', route(async (req, res) => {
   const site = siteFor(req.params.id);

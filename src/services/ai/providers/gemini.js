@@ -27,7 +27,7 @@ async function call(prompt, options = {}) {
     throw new Error('Gemini API key not provided. Enter your API key in the UI or add GEMINI_API_KEY to .env file.');
   }
 
-  const model = options.model || 'gemini-2.5-flash';
+  const model = options.model || 'gemini-3.5-flash-lite';
   const temperature = options.temperature || 0.3;
   const maxTokens = options.maxTokens || 2000;
 
@@ -46,7 +46,9 @@ async function call(prompt, options = {}) {
         ],
         generationConfig: {
           temperature,
-          maxOutputTokens: maxTokens
+          maxOutputTokens: maxTokens,
+          // Gemini 3 models think by default; keep it at the lowest level the model allows.
+          ...(options.thinkingLevel ? { thinkingConfig: { thinkingLevel: options.thinkingLevel } } : {})
         },
         systemInstruction: {
           parts: [

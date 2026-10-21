@@ -139,11 +139,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('apply-types').addEventListener('click', () => {
     const urls = selectedUrls();
     if (!urls.length) return notify('Select pages first.', 'error');
-    const plan = readPlan('type-options', 'type-custom');
+    const plan = readPlan('type-options', 'type-more');
     urls.forEach(url => { state.plans[url] = plan; });
     renderRun(); notify(`Schema types set for ${urls.length} page(s).`, 'success');
   });
-  $('plan-form').addEventListener('submit', () => { state.plans[state.planUrl] = readPlan('plan-type-options', 'plan-custom'); renderRun(); });
+  $('plan-form').addEventListener('submit', () => { state.plans[state.planUrl] = readPlan('plan-type-options', 'plan-more'); renderRun(); });
   $('plan-auto').addEventListener('click', () => { state.plans[state.planUrl] = { types: [] }; $('plan-dialog').close(); renderRun(); });
   $('plan-cancel').addEventListener('click', () => $('plan-dialog').close());
   document.querySelectorAll('[data-export]').forEach(button => button.addEventListener('click', () => {
@@ -177,15 +177,18 @@ async function copyText(text) {
 async function loadSchemaTypes() {
   const body = await api('/api/workspaces/schema-types');
   state.schemaTypes = body.types;
-  state.meta = { kinds: body.kinds, buildable: body.buildable, businessTypes: body.businessTypes };
+  state.meta = { kinds: body.kinds, buildable: body.buildable, businessTypes: body.businessTypes, moreTypes: body.moreTypes };
   $('business-types').replaceChildren(...body.businessTypes.map(type => Object.assign(document.createElement('option'), { value: type })));
   renderTypeOptions('type-options', []);
+  renderMoreTypes('type-more', []);
 }
 function applyEngine(engine) {
   state.engine = engine;
   $('ai-fields').hidden = engine !== 'ai';
   $('ai-type-picker').hidden = engine !== 'ai';
   $('rules-hint').hidden = engine !== 'rules';
+  // The picker lists what this engine can build; keep any ticks that still apply.
+  renderTypeOptions('type-options', readPlan('type-options', 'type-more').types);
   if (state.activeRun) renderRun();
 }
 // Types the current engine can produce: the rules builder makes a fixed set, AI anything.
@@ -201,10 +204,43 @@ function renderTypeOptions(containerId, selected) {
     label.append(input, text); return label;
   }));
 }
-function readPlan(containerId, customId) {
-  const types = [...$(containerId).querySelectorAll('input:checked')].map(input => input.value);
-  types.push(...$(customId).value.split(',').map(type => type.trim()).filter(Boolean));
-  return { types: [...new Set(types)] };
+function readPlan(containerId, moreId) {
+  const checked = id => [...$(id).querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value);
+  return { types: [...new Set([...checked(containerId), ...($(moreId).hidden ? [] : checked(moreId))])] };
+}
+// "More schema.org types": grouped checkboxes with a filter and a selected count.
+function renderMoreTypes(id, selected) {
+  const box = $(id); const shown = new Set(state.meta.moreTypes.map(item => item.type));
+  // Types picked earlier that aren't in any list (old free-text entries) stay selectable.
+  const mainTypes = new Set(state.schemaTypes.map(item => item.type));
+  const extra = selected.filter(type => !shown.has(type) && !mainTypes.has(type)).map(type => ({ type, group: 'Your types' }));
+  const groups = new Map();
+  for (const item of [...extra, ...state.meta.moreTypes]) groups.set(item.group, [...(groups.get(item.group) || []), item.type]);
+  box.querySelector('.more-options').replaceChildren(...[...groups].map(([group, types]) => {
+    const section = document.createElement('div'); section.className = 'more-group';
+    section.append(Object.assign(document.createElement('span'), { className: 'more-group-title', textContent: group }));
+    const grid = document.createElement('div'); grid.className = 'more-grid';
+    grid.append(...types.map(type => {
+      const label = document.createElement('label'); const input = document.createElement('input');
+      input.type = 'checkbox'; input.value = type; input.checked = selected.includes(type);
+      label.append(input, document.createTextNode(type)); return label;
+    }));
+    section.append(grid); return section;
+  }));
+  const count = () => { const n = box.querySelectorAll('.more-options input:checked').length; box.querySelector('.more-count').textContent = n ? `(${n} selected)` : ''; };
+  const filter = box.querySelector('.more-filter');
+  filter.value = '';
+  filter.oninput = () => {
+    const term = filter.value.trim().toLowerCase();
+    box.querySelectorAll('.more-group').forEach(section => {
+      let any = false;
+      section.querySelectorAll('label').forEach(label => { const match = label.textContent.toLowerCase().includes(term); label.hidden = !match; any ||= match; });
+      section.hidden = !any;
+    });
+  };
+  box.querySelector('.more-options').onchange = count;
+  box.open = extra.length > 0 || selected.some(type => shown.has(type));
+  count();
 }
 function planFor(page) { return state.plans[page.url] || (state.engine === 'rules' ? page.rulesPlan : page.schemaPlan) || null; }
 function describePlan(plan, page) {
@@ -215,22 +251,27 @@ function describePlan(plan, page) {
 }
 function openPlan(page) {
   const plan = planFor(page) || { types: [] };
-  const known = availableTypes().map(item => item.type);
   state.planUrl = page.url;
   $('plan-url').textContent = page.url;
   $('plan-auto').textContent = state.engine === 'rules' ? 'Use page rules' : 'Let AI choose';
   renderTypeOptions('plan-type-options', plan.types || []);
-  $('plan-custom').value = (plan.types || []).filter(type => !known.includes(type)).join(', ');
+  $('plan-more').hidden = state.engine === 'rules';
+  renderMoreTypes('plan-more', plan.types || []);
   $('plan-dialog').showModal();
 }
 
+// Pages never read: failed, or left queued/mid-crawl by an interrupted run.
+function unreadPages(run) {
+  if (!run || ['discovering', 'crawling', 'generating', 'publishing'].includes(run.status)) return [];
+  return run.pages.filter(page => !page.pageData && ['failed', 'queued', 'crawling'].includes(page.status));
+}
 async function recrawlFailed() {
-  const urls = state.activeRun.pages.filter(page => page.status === 'failed' && !page.pageData).map(page => page.url);
+  const urls = unreadPages(state.activeRun).map(page => page.url);
   if (!urls.length) return;
   try {
     await api(`/api/workspaces/runs/${state.activeRun.id}/recrawl`, { method: 'POST', body: JSON.stringify({ urls }) });
     state.activeRun.status = 'crawling'; renderRun();
-    notify(`Retrying ${urls.length} page(s).`, 'success'); startPolling();
+    notify(`Reading ${urls.length} page(s).`, 'success'); startPolling();
   } catch (error) { notify(error.message, 'error'); }
 }
 
@@ -497,7 +538,7 @@ async function generateRun() {
 
 function generationPlans(urls) {
   const plans = Object.fromEntries(urls.filter(url => state.plans[url]).map(url => [url, state.plans[url]]));
-  const picker = readPlan('type-options', 'type-custom');
+  const picker = readPlan('type-options', 'type-more');
   return { plans, ...(state.engine === 'ai' && picker.types.length ? { defaultPlan: picker } : {}) };
 }
 
@@ -598,7 +639,9 @@ function renderRun() {
   $('select-all-pages')?.addEventListener('change', event => { document.querySelectorAll('.page-select').forEach(item => { item.checked = event.target.checked; }); updatePublishControls(); });
   const busy = ['generating', 'publishing', 'discovering', 'crawling'].includes(run.status);
   $('start-crawl').disabled = busy;
-  $('recrawl-failed').hidden = !run.pages.some(page => page.status === 'failed' && !page.pageData);
+  const unread = unreadPages(run);
+  $('recrawl-failed').hidden = !unread.length;
+  $('recrawl-failed').textContent = `Resume / retry ${unread.length} page${unread.length === 1 ? '' : 's'}`;
   $('recrawl-failed').disabled = busy;
   $('verify-run').disabled = busy || !(run.pages.some(page => page.schema) || run.pages.some(page => page.status === 'schema_removed'));
   $('rollback-run').disabled = busy || !run.pages.some(page => page.writeReceipt && !page.writeReceipt.rolledBack);
@@ -668,9 +711,14 @@ function renderHistory(runs) {
 
 function renderProfile(site) {
   const profile = site.profile;
+  // Not set up (or missing what Google needs for local results) is a warning, shown in place.
+  $('profile-card').classList.toggle('needs-setup', !profile?.name);
+  $('profile-card').classList.toggle('has-gaps', Boolean(profile?.name && site.profileGaps?.missing?.length));
+  $('edit-profile').className = profile?.name ? 'btn btn-secondary' : 'btn btn-primary';
+  $('edit-profile').textContent = profile?.name ? 'Edit profile' : 'Set up profile';
   $('profile-summary').textContent = profile?.name
     ? [profile.name, profile.type, [profile.address?.addressLocality, profile.address?.addressRegion].filter(Boolean).join(', '), profile.telephone].filter(Boolean).join(' · ')
-    : 'Not set up yet. Needed for rule-based schema: click Edit profile and it fills itself in from the site.';
+    : 'Not set up yet. Needed for rule-based schema: click Set up profile and it fills itself in from the site.';
   const gaps = site.profileGaps;
   $('profile-gaps').hidden = !gaps;
   if (gaps) {

@@ -71,7 +71,7 @@ In the Apply step, **Download &lt;script&gt; tags / JSON** (`GET /runs/:id/expor
 - `wordpress/schema-workspace.php`: the connector plugin. Keep the file name, REST namespace `schema-workspace/v1` and meta keys, or existing installs break. Rebuild the zip after editing it.
 
 ## Commands
-- **Deploy:** `docker compose -f compose.host.yaml up -d --build`. The container is `schematic` and the compose service is `schema-workspace`. Data lives in the volume `schegen_schema-workspace-data`.
+- **Deploy:** `scripts/deploy.sh` (builds, waits until no crawl/generation/publish is running, then restarts; a restart mid-operation marks that run `interrupted`). Never restart the container directly while someone may be working. The container is `schematic` and the compose service is `schema-workspace`. Data lives in the volume `schegen_schema-workspace-data`.
 - **Admin user:** `docker compose -f compose.host.yaml exec schema-workspace node scripts/admin-user.js admin`.
 - **Tests:** the production image has no dev dependencies, so run them in `node:24-slim` with a full `npm ci` `node_modules` mounted: `npm test` (node:test; WordPress is faked with express fixtures). Set `CRAWL_INTERVAL_MS=0` in tests.
 - **Changelog:** add an entry to `CHANGELOG.md` for each user-visible change.
@@ -79,4 +79,5 @@ In the Apply step, **Download &lt;script&gt; tags / JSON** (`GET /runs/:id/expor
 ## Gotchas
 - Never pretend to be a browser first when fetching. That is what got crawls 403'd.
 - URLs that only redirect or canonicalize to another page (e.g. Strickland's `/mini-split-…`) aren't WordPress posts, so the connector correctly refuses them. They start unchecked in the table.
+- AI models are listed in `src/services/ai/index.js` with `reasoning: 'none'` (OpenAI) or the lowest `thinkingLevel` (Gemini 3.x can't fully disable thinking). Current models reject `max_tokens`; the OpenAI provider sends `max_completion_tokens`.
 - Don't ask users to write AI instructions: chosen types alone must drive generation (the notes field was removed from the UI on purpose).

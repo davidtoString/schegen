@@ -22,6 +22,13 @@ const SCHEMA_TYPES = [
   { type: 'Person', group: 'Other', hint: 'Author / team member' },
   { type: 'Event', group: 'Other', hint: 'Dated event' }
 ];
+// Less common types offered under "More schema.org types" (AI engine only).
+const MORE_SCHEMA_TYPES = [
+  ...['HVACBusiness', 'Plumber', 'Electrician', 'RoofingContractor', 'GeneralContractor', 'HomeAndConstructionBusiness', 'HousePainter', 'Locksmith', 'MovingCompany', 'ProfessionalService', 'AutoRepair', 'Dentist', 'MedicalBusiness', 'LegalService', 'RealEstateAgent', 'Restaurant', 'Store'].map(type => ({ type, group: 'Trades & local businesses' })),
+  ...['NewsArticle', 'TechArticle', 'QAPage', 'ItemList', 'SpecialAnnouncement', 'Course', 'JobPosting', 'Recipe'].map(type => ({ type, group: 'Content' })),
+  ...['AggregateOffer', 'Brand', 'SoftwareApplication'].map(type => ({ type, group: 'Commerce' })),
+  ...['Place', 'ContactPoint', 'PostalAddress', 'OpeningHoursSpecification'].map(type => ({ type, group: 'Other' }))
+];
 // Choosing LocalBusiness accepts its specific subtypes too.
 const LOCAL_BUSINESS_SUBTYPES = ['LocalBusiness', 'HVACBusiness', 'Plumber', 'Electrician', 'RoofingContractor', 'GeneralContractor', 'HomeAndConstructionBusiness', 'HousePainter', 'Locksmith', 'MovingCompany', 'ProfessionalService', 'AutoRepair', 'Dentist', 'MedicalBusiness', 'LegalService', 'RealEstateAgent', 'Restaurant', 'Store'];
 
@@ -215,4 +222,4 @@ async function generatePlanned(page, options, plan) {
   }
   return result;
 }
-module.exports = { generate, generateAI, generatePlanned, validate, normalize, applyPlan, cleanPlan, SCHEMA_TYPES };
+module.exports = { generate, generateAI, generatePlanned, validate, normalize, applyPlan, cleanPlan, SCHEMA_TYPES, MORE_SCHEMA_TYPES };

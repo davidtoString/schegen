@@ -12,21 +12,22 @@ const providers = {
   gemini: geminiProvider
 };
 
-// Available models - update this as new models are released
+// Available models: current, non-thinking (or least-thinking) options only. `reasoning` /
+// `thinkingLevel` are sent so the model answers directly instead of spending billed thinking tokens.
+// Checked 2026-10-21 against the providers' model and pricing docs; prices are per 1M tokens in/out.
 const availableModels = {
   openai: [
-    { id: 'gpt-4o', name: 'GPT-4o' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-    { id: 'gpt-4.1', name: 'GPT-4.1' },
-    { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', default: true },
-    { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano (cheapest; often ignores chosen types)' }
+    { id: 'gpt-6-luna', name: 'GPT-6 Luna · $0.10 / $0.50', reasoning: 'none', default: true },
+    { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna · $0.20 / $1.20', reasoning: 'none' },
+    { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini · $0.75 / $4.50', reasoning: 'none' }
   ],
   gemini: [
-    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', default: true },
-    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' },
-    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' }
+    { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite · $0.30 / $2.50', thinkingLevel: 'minimal', default: true },
+    { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite · $0.25 / $1.50', thinkingLevel: 'minimal' },
+    { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash · $0.75 / $3.75', thinkingLevel: 'low' }
   ]
 };
+function modelInfo(providerName, model) { return availableModels[providerName]?.find(item => item.id === model) || {}; }
 
 /**
  * Get available providers and their models
@@ -77,8 +78,11 @@ async function call(providerName, prompt, options = {}) {
 
   const model = options.model || getDefaultModel(providerName);
 
+  const info = modelInfo(providerName, model);
   return provider.call(prompt, {
     model,
+    reasoning: info.reasoning,
+    thinkingLevel: info.thinkingLevel,
     temperature: options.temperature || 0.3,
     maxTokens: options.maxTokens || 2000,
     apiKey: options.apiKey  // Pass API key to provider

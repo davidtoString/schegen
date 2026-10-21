@@ -1,6 +1,5 @@
 /**
- * OpenAI Provider
- * Supports GPT-4, GPT-4 Turbo, GPT-3.5 Turbo
+ * OpenAI Provider (Chat Completions)
  */
 
 const axios = require('axios');
@@ -27,7 +26,7 @@ async function call(prompt, options = {}) {
     throw new Error('OpenAI API key not provided. Enter your API key in the UI or add OPENAI_API_KEY to .env file.');
   }
 
-  const model = options.model || 'gpt-4.1-mini';
+  const model = options.model || 'gpt-6-luna';
   const temperature = options.temperature || 0.3;
   const maxTokens = options.maxTokens || 2000;
 
@@ -47,7 +46,9 @@ async function call(prompt, options = {}) {
           }
         ],
         temperature,
-        max_tokens: maxTokens
+        // Current models reject max_tokens; max_completion_tokens works on every chat model.
+        max_completion_tokens: maxTokens,
+        ...(options.reasoning ? { reasoning_effort: options.reasoning } : {})
       },
       {
         headers: {

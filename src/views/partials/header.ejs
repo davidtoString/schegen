@@ -41,14 +41,14 @@
         <div><span class="eyebrow">Guide</span><h2>How Schematic works</h2></div>
         <button type="button" class="icon-button" id="close-help" aria-label="Close">×</button>
       </div>
-      <p>Schematic reads your WordPress pages, builds JSON-LD schema for them from your business profile and page rules (AI is optional), and puts it on the live site through Rank Math. You review everything before it goes live, any change can be undone, and every version is backed up.</p>
+      <p>Schematic reads your WordPress pages, builds JSON-LD schema for them from your business profile and page rules or with AI, and puts it on the live site through Rank Math. You review everything before it goes live, any change can be undone, and every version is backed up.</p>
 
       <h3>Before you start (once per site)</h3>
       <ol>
         <li><strong>Add site</strong>: the WordPress address, a username and an <strong>Application Password</strong> (WordPress → Users → Profile → Application Passwords). A user with the Editor role is enough.</li>
         <li><strong>Download plugin</strong> and install the <strong>Schematic Connector</strong> on that WordPress site, then click <strong>Test connection</strong>.</li>
         <li><strong>Business profile</strong> (on the site page): it fills itself in from the site. Check the name, phone, address, logo, hours and service areas and save. Every page links to these details. <strong>Page rules</strong> in the same window set which schema each kind of page gets.</li>
-        <li>Optional: <strong>AI Settings</strong>, only if you want to use AI. Save an OpenAI or Gemini key; the start and end of the saved key are shown so you can tell keys apart.</li>
+        <li><strong>AI Settings</strong>, to use AI. Save an OpenAI or Gemini key; the start and end of the saved key are shown so you can tell keys apart.</li>
       </ol>
 
       <h3>1. Pages: find and read the site</h3>
@@ -58,10 +58,10 @@
       <p><strong>Create new schema</strong> writes new schema for the checked pages. <strong>Delete existing schema</strong> removes it (and can be undone).</p>
 
       <h3>3. Review: generate</h3>
-      <p>Choose <strong>Rules</strong> (recommended: instant, free, copied exactly from the page) or <strong>AI</strong>, then click <strong>Generate schema</strong>.</p>
+      <p>Choose how to build the schema, <strong>Rules</strong> or <strong>AI</strong>, then click <strong>Generate schema</strong>.</p>
       <ul>
-        <li><strong>Rules</strong>: each page gets the business, the website, a page entry and what its kind is set to in Page rules. For example, a service page gets breadcrumbs, a Service named after the page ("Furnace Repair") and its FAQs. Each row shows the page's kind; <strong>Types</strong> changes one page.</li>
-        <li><strong>AI</strong>: pick types in the picker (or let the AI choose). The app keeps only those types and retries once if one is missing.</li>
+        <li><strong>Rules</strong>: instant, with names and FAQs copied exactly from the page. Each page gets the business, the website, a page entry and what its kind is set to in Page rules. For example, a service page gets breadcrumbs, a Service named after the page ("Furnace Repair") and its FAQs. Each row shows the page's kind; <strong>Types</strong> changes one page.</li>
+        <li><strong>AI</strong>: written from each page's content, in any schema.org types. Pick types in the picker, including <strong>More schema.org types</strong>, or let the AI choose. The app keeps only those types and retries once if one is missing.</li>
       </ul>
       <p>Every page is checked for what Google needs (FAQs with answers, a named service, complete breadcrumbs). A preview of the WordPress change runs automatically. Open <strong>Review</strong> on any row to see the schema, what the page has now, and the before/after.</p>
       <p class="muted">Choose what happens to schema a page already has: replace Rank Math's schema for that page (default), add yours alongside it, replace only Schematic's earlier schema, or skip pages that already have some.</p>

@@ -25,7 +25,7 @@
 
       <section class="card profile-card" id="profile-card">
         <div class="section-heading">
-          <div><h3>Business profile</h3><p class="muted" id="profile-summary">Not set up yet.</p></div>
+          <div class="profile-heading"><svg class="profile-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17.5h.01"/></svg><div><h3>Business profile</h3><p class="muted" id="profile-summary">Not set up yet.</p></div></div>
           <button class="btn btn-secondary" id="edit-profile">Edit profile</button>
         </div>
         <p id="profile-gaps" class="profile-gaps" hidden></p>
@@ -49,7 +49,7 @@
         <label for="manual-urls">Specific page URLs <small>(optional, one per line)</small></label>
         <textarea id="manual-urls" rows="3" placeholder="https://example.com/about/"></textarea>
         </details>
-        <div class="summary-actions" style="justify-content:flex-start"><button class="btn btn-primary" id="start-crawl">Crawl site</button><button class="btn btn-secondary" id="recrawl-failed" hidden>Retry failed pages</button></div>
+        <div class="summary-actions" style="justify-content:flex-start"><button class="btn btn-primary" id="start-crawl">Crawl site</button><button class="btn btn-secondary" id="recrawl-failed" hidden>Resume / retry pages</button></div>
         <p class="muted selection-hint"></p>
         <div class="summary-actions">
           <button class="btn btn-primary" id="pages-continue" disabled>Continue →</button>
@@ -76,8 +76,8 @@
         <div id="review-create-panel">
           <h3>Generate schema</h3>
           <div class="engine-choice" role="radiogroup" aria-label="How to build the schema">
-            <label class="engine-option"><input type="radio" name="engine" value="rules" checked><span><strong>Rules</strong><small>Instant and free. Built from the business profile and page rules, copied exactly from the page.</small></span></label>
-            <label class="engine-option"><input type="radio" name="engine" value="ai"><span><strong>AI</strong><small>Slower, costs per page. For types the rules can't build.</small></span></label>
+            <label class="engine-option"><input type="radio" name="engine" value="rules" checked><span><strong>Rules</strong><small>Built from your business profile and page rules, with names, FAQs and details copied exactly from each page.</small></span></label>
+            <label class="engine-option"><input type="radio" name="engine" value="ai"><span><strong>AI</strong><small>Written by AI from each page's content, in any schema.org types you choose.</small></span></label>
           </div>
           <p class="muted" id="rules-hint">Each page gets the types its kind is set to in <strong>Business profile → Page rules</strong>. Use <strong>Types</strong> on a row to change one page.</p>
           <div id="ai-fields" hidden>
@@ -90,8 +90,7 @@
             <legend>Schema types to generate</legend>
             <p class="muted">Pick the types for the selected pages, or leave all unchecked to let the AI choose. Use <strong>Types</strong> on a row to set one page differently.</p>
             <div id="type-options" class="type-options"></div>
-            <label for="type-custom">Other schema.org types <small>(optional, comma-separated)</small></label>
-            <input id="type-custom" placeholder="e.g. HVACBusiness, Plumber">
+            <details class="more-types" id="type-more"><summary>More schema.org types <span class="more-count"></span></summary><input type="search" class="more-filter" placeholder="Filter types…" aria-label="Filter types"><div class="more-options"></div></details>
             <button type="button" class="btn btn-secondary" id="apply-types">Use these types for selected pages</button>
           </fieldset>
           <button class="btn btn-primary" id="generate-run" disabled>Generate schema</button>
@@ -224,7 +223,7 @@
     <h2>Schema types for this page</h2>
     <p id="plan-url" class="muted"></p>
     <div id="plan-type-options" class="type-options"></div>
-    <label>Other schema.org types <small>(comma-separated)</small><input id="plan-custom"></label>
+    <details class="more-types" id="plan-more"><summary>More schema.org types <span class="more-count"></span></summary><input type="search" class="more-filter" placeholder="Filter types…" aria-label="Filter types"><div class="more-options"></div></details>
     <div class="dialog-actions"><button type="button" class="btn btn-secondary" id="plan-auto">Let AI choose</button><button type="button" class="btn btn-secondary" id="plan-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
   </form>
 </dialog>

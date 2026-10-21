@@ -2,6 +2,18 @@
 
 All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
 
+## [3.3.0] - 2026-10-21
+
+### Changed
+- **AI models updated** to current non-thinking options, three per provider. OpenAI: GPT-6 Luna (default), GPT-5.6 Luna, GPT-5.4 Mini, all with `reasoning_effort: none`. Gemini: 3.5 Flash-Lite (default), 3.1 Flash-Lite, 3.8 Flash, at their lowest thinking level. The OpenAI call now sends `max_completion_tokens` (newer models reject `max_tokens`). Tested on Strickland: FAQPage + Service on every page, 5 FAQs each, about 6 s per page.
+- "Other schema.org types" is now a grouped, filterable checkbox list (**More schema.org types**) in the AI picker and the Types pop-up.
+- Rules / AI options described neutrally.
+- An unset or incomplete business profile is shown as an amber warning card.
+
+### Fixed
+- Interrupted crawls can be finished: **Resume / retry pages** also picks up pages left queued by a restart. A run's old restart notice clears when a new step starts.
+- Deploys go through `scripts/deploy.sh`, which waits until nothing is running before restarting.
+
 ## [3.2.2] - 2026-10-21
 
 ### Removed
