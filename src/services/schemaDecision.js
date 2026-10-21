@@ -23,9 +23,9 @@ function assess(before, existing, generated, decision, owned) {
   }));
   const skip = decision === 'keep' && (occupied || existing.length > 0);
   let blocked = '';
-  if (!skip && occupied && !owned) blocked = 'The mapped field contains schema not recorded as app-managed. Keep it or use a separate empty field; it will not be overwritten.';
-  if (!skip && thirdParty.length && decision !== 'review' && !suppress) blocked = 'Other public JSON-LD exists. Review conflicts and explicitly acknowledge it before publishing.';
-  if (!skip && !suppress && conflicts.some(message => message.startsWith('Same entity ID:'))) blocked = 'Proposed schema reuses an existing third-party entity ID. Resolve it before publishing.';
+  if (!skip && occupied && !owned) blocked = 'WordPress already stores schema for this page that Schematic did not write, so it will not be overwritten. Choose "Replace it with the new schema" or "Keep existing".';
+  if (!skip && thirdParty.length && decision !== 'review' && !suppress) blocked = 'This page already has other schema (usually Rank Math\'s). This option only replaces Schematic\'s own schema. Choose "Replace it with the new schema" to replace it, or "Advanced: keep Rank Math output and add app schema" to add yours alongside.';
+  if (!skip && !suppress && conflicts.some(message => message.startsWith('Same entity ID:'))) blocked = 'The new schema uses the same entity ID as schema already on the page. Choose "Replace it with the new schema" so only one of them is output.';
   if (suppress && (before.metaKey || !before.schemaControl)) blocked = 'Replacing/removing Rank Math output requires Schematic Connector 1.2 or later. Update the connector and use connector integration.';
   return { before, after: generated, existing, thirdParty, conflicts: [...new Set(conflicts)], decision, skip, blocked, suppressRankMath: suppress, requiresAcknowledgement: !skip && (suppress || thirdParty.length > 0) };
 }

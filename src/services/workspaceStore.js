@@ -281,6 +281,7 @@ let recovered = false;
 for (const run of startupData.runs) {
   if (['discovering', 'crawling', 'generating', 'publishing'].includes(run.status)) {
     run.status = 'interrupted';
+    run.progress = null;
     run.error = 'The server restarted during this operation. Existing results are preserved; retry the unfinished step.';
     recovered = true;
   }

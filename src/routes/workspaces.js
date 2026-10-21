@@ -136,7 +136,8 @@ async function sitemapPages(url, filter, warnings) {
  */
 async function crawlPages(id, site, pages) {
   const client = optionalClient(site);
-  for (const page of pages) {
+  for (const [index, page] of pages.entries()) {
+    store.updateRun(id, { progress: { done: index, total: pages.length } });
     updatePage(id, page.url, { status: 'crawling', error: null });
     let pageData; let publicError;
     try {
@@ -184,8 +185,8 @@ async function crawl(id, site, options) {
     store.updateRun(id, { status: 'crawling', source, limited, pages, summary: summary(pages) });
     // Schema removal only needs page URLs, not scraped content — skip the fetch/parse pass entirely.
     if (!options.skipContent) await crawlPages(id, site, pages);
-    store.updateRun(id, { status: 'ready' });
-  } catch (error) { store.updateRun(id, { status: 'failed', error: error.message }); }
+    store.updateRun(id, { status: 'ready', progress: null });
+  } catch (error) { store.updateRun(id, { status: 'failed', progress: null, error: error.message }); }
   finally { busySites.delete(site.id); }
 }
 router.post('/runs/:id/recrawl', route(async (req, res) => {
@@ -195,7 +196,7 @@ router.post('/runs/:id/recrawl', route(async (req, res) => {
   lock(site.id);
   store.updateRun(run.id, { status: 'crawling', error: null });
   setImmediate(async () => {
-    try { await crawlPages(run.id, site, pages); store.updateRun(run.id, { status: 'ready' }); }
+    try { await crawlPages(run.id, site, pages); store.updateRun(run.id, { status: 'ready', progress: null }); }
     catch (error) { store.updateRun(run.id, { status: 'failed', error: error.message }); }
     finally { busySites.delete(site.id); }
   });
@@ -221,10 +222,11 @@ router.post('/runs/:id/generate', route(async (req, res) => {
   const plans = req.body.plans && typeof req.body.plans === 'object' ? req.body.plans : {};
   const planFor = page => schemas.cleanPlan(plans[page.url] || req.body.defaultPlan || page.schemaPlan);
   lock(run.siteId);
-  store.updateRun(run.id, { status: 'generating', error: null });
+  store.updateRun(run.id, { status: 'generating', error: null, progress: { done: 0, total: pages.length } });
   setImmediate(async () => {
     try {
-      for (const page of pages) {
+      for (const [index, page] of pages.entries()) {
+        store.updateRun(run.id, { progress: { done: index, total: pages.length } });
         updatePage(run.id, page.url, { schema: null, validation: null, existingReview: null, error: null, status: 'generating' });
         try {
           // Only fills a gap left by the crawler; never overrides a page's own detected image.
@@ -250,8 +252,8 @@ router.post('/runs/:id/generate', route(async (req, res) => {
           updatePage(run.id, page.url, { schema, validation, generation: engine === 'rules' ? { engine: 'rules' } : { engine: 'ai', provider: aiOptions.provider, model: aiOptions.model || require('../services/ai').getDefaultModel(aiOptions.provider), keySource: aiOptions.keySource, keyHint: aiOptions.keyHint }, status: validation.valid ? 'generated' : 'invalid', schemaTypes: schema['@graph']?.flatMap(n => n['@type']) || [], generatedAt: new Date().toISOString() });
         } catch (error) { updatePage(run.id, page.url, { status: 'failed', error: aiOptions?.apiKey ? error.message.split(aiOptions.apiKey).join('[redacted]') : error.message }); }
       }
-      store.updateRun(run.id, { status: 'completed' });
-    } catch (error) { store.updateRun(run.id, { status: 'failed', error: error.message }); }
+      store.updateRun(run.id, { status: 'completed', progress: null });
+    } catch (error) { store.updateRun(run.id, { status: 'failed', progress: null, error: error.message }); }
     finally { busySites.delete(run.siteId); }
   });
   res.status(202).json({ success: true, runId: run.id });
@@ -265,10 +267,19 @@ router.post('/runs/:id/publish', route(async (req, res) => {
   const client = clientFor(site);
   const dryRun = req.body.dryRun !== false;
   lock(site.id);
+  // Runs in the background like crawl/generate: each page makes several WordPress and public
+  // requests, so a long selection would outlive Cloudflare's ~100 s request limit. The UI polls
+  // `progress` and reads `lastPublish` when the run leaves 'publishing'.
+  store.updateRun(run.id, { status: 'publishing', error: null, progress: { done: 0, total: pages.length, dryRun } });
+  res.status(202).json({ success: true, runId: run.id, dryRun, total: pages.length });
+  setImmediate(() => publishPages(run, pages, site, client, dryRun, removing, req.body));
+}));
+async function publishPages(run, pages, site, client, dryRun, removing, body) {
   const results = [];
+  const req = { body };
   try {
-    store.updateRun(run.id, { status: 'publishing', error: null });
     for (const page of pages) {
+      store.updateRun(run.id, { progress: { done: results.length, total: pages.length, dryRun } });
       try {
         const previous = await client.snapshot(page.url);
         const existing = await client.inspectPublic(page.url);
@@ -309,10 +320,10 @@ router.post('/runs/:id/publish', route(async (req, res) => {
         updatePage(run.id, page.url, { publishError: error.message, ...(dryRun ? {} : { status: 'publish_failed' }) });
       }
     }
-    store.updateRun(run.id, { status: results.every(r => r.success) ? 'completed' : 'completed_with_errors', lastPublish: { dryRun, results, at: new Date().toISOString() } });
-    res.json({ success: results.every(r => r.success), dryRun, results });
-  } finally { busySites.delete(site.id); }
-}));
+    store.updateRun(run.id, { status: results.every(r => r.success) ? 'completed' : 'completed_with_errors', progress: null, lastPublish: { dryRun, results, at: new Date().toISOString() } });
+  } catch (error) { store.updateRun(run.id, { status: 'failed', progress: null, error: error.message }); }
+  finally { busySites.delete(site.id); }
+}
 router.post('/runs/:id/rollback', route(async (req, res) => {
   const run = runFor(req.params.id);
   const pages = select(run, req.body.urls);

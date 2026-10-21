@@ -34,8 +34,14 @@ function setWizardStep(step) {
 function guideText(run) {
   if (!state.activeSite) return 'Start here: add your WordPress site, then save your AI key in AI Settings.';
   if (!run) return 'Step 1: Test the connection, then click Crawl site to find pages.';
-  if (['crawling', 'discovering'].includes(run.status)) return 'Crawling… select the pages you want below, then continue.';
-  if (run.status === 'generating') return 'Generating schema… pages update as they finish.';
+  if (run.status === 'discovering') return 'Finding pages…';
+  if (run.status === 'crawling') return `Reading pages… ${run.progress ? `${run.progress.done} of ${run.progress.total}. ` : ''}Select the ones you want below, then continue.`;
+  if (run.status === 'generating') return `Generating schema… ${run.progress ? `${run.progress.done} of ${run.progress.total} pages.` : 'Pages update as they finish.'}`;
+  if (run.status === 'publishing') {
+    const progress = run.progress;
+    const label = progress?.dryRun === false ? 'Applying changes to WordPress' : 'Previewing changes (checking WordPress and the live pages)';
+    return progress ? `${label}… ${progress.done} of ${progress.total} pages.` : `${label}…`;
+  }
   switch (state.wizardStep) {
     case 'pages': return 'Crawl the site, then check the pages you want to work with below.';
     case 'action': return 'Choose whether to create new schema or delete existing schema for the selected pages.';
@@ -56,6 +62,12 @@ function renderWizard() {
     if (index === currentIndex) button.setAttribute('aria-current', 'step'); else button.removeAttribute('aria-current');
   });
   $('workflow-guide').textContent = guideText(state.activeRun);
+  // While a crawl, generation or publish runs, the guide becomes a visible progress strip.
+  const run = state.activeRun;
+  const busy = ['discovering', 'crawling', 'generating', 'publishing'].includes(run?.status);
+  $('workflow-guide').classList.toggle('busy', busy);
+  const { done = 0, total = 0 } = (busy && run.progress) || {};
+  $('workflow-guide').style.setProperty('--progress', total ? `${Math.round((done / total) * 100)}%` : '0%');
   updatePublishControls();
 }
 
@@ -562,13 +574,26 @@ function startPolling() {
 async function publishRun(dryRun) {
   const urls = selectedUrls();
   if (!urls.length) return notify('Select pages first.', 'error');
+  if (['discovering', 'crawling', 'generating', 'publishing'].includes(state.activeRun?.status)) return notify('Wait for the current step to finish.', 'info');
   if (!dryRun && !window.confirm(`Apply "${$('schema-policy').selectedOptions[0].textContent}" to ${urls.length} page(s)? This changes public schema. A backup is kept for Undo.`)) return;
   try {
-    const body = await api(`/api/workspaces/runs/${state.activeRun.id}/publish`, {
+    await api(`/api/workspaces/runs/${state.activeRun.id}/publish`, {
       method: 'POST', body: JSON.stringify({ urls, dryRun, schemaPolicy: $('schema-policy').value, acknowledgeConflicts: $('acknowledge-conflicts').checked })
     });
-    notify(dryRun ? `Preview ready. Open Review for before/after and conflicts. Kept unchanged: ${body.results.filter(item => item.skipped).length}.` : `Saved: ${body.results.filter(item => item.stored).length}. Kept unchanged: ${body.results.filter(item => item.skipped).length}. Verified: ${body.results.filter(item => item.verified).length}.`, body.success ? 'success' : 'error');
-    const refreshed = await api(`/api/workspaces/runs/${state.activeRun.id}`); state.activeRun = refreshed.run; renderRun(); await refreshHistory();
+    state.activeRun.status = 'publishing';
+    state.activeRun.progress = { done: 0, total: urls.length, dryRun };
+    renderRun();
+    // Runs on the server in the background; report from the finished run's lastPublish.
+    state.afterPoll = async () => {
+      const results = state.activeRun.lastPublish?.results || [];
+      const failed = results.filter(item => !item.success);
+      const count = filter => results.filter(filter).length;
+      const summary = dryRun
+        ? `Preview ready for ${count(item => item.success && !item.skipped)} page(s). Kept unchanged: ${count(item => item.skipped)}.`
+        : `Saved: ${count(item => item.stored)}. Kept unchanged: ${count(item => item.skipped)}. Verified live: ${count(item => item.verified)}.`;
+      notify(failed.length ? `${summary} ${failed.length} page(s) need attention; see their status below.` : summary, failed.length ? 'error' : 'success');
+    };
+    startPolling();
   } catch (error) { notify(error.message, 'error'); }
 }
 

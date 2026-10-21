@@ -54,13 +54,21 @@ test('crawl → schema → dry run → insert → public verification with a Wor
   const api = `http://127.0.0.1:${server.address().port}/api`;
   const request = async (url, method = 'GET', body) => {
     const response = await fetch(api + url, { method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
-    return { code: response.status, ...(await response.json()) };
+    const result = { code: response.status, ...(await response.json()) };
+    // Publishing runs in the background: wait for it, then report like the old synchronous reply.
+    if (url.endsWith('/publish') && result.code === 202) {
+      const run = await finished();
+      assert.equal(run.progress, null, 'progress cleared when done');
+      return { code: 202, success: run.lastPublish.results.every(item => item.success), dryRun: run.lastPublish.dryRun, results: run.lastPublish.results };
+    }
+    return result;
   };
+  let id;
   const site = (await request('/sites', 'POST', { name: 'Fixture', url: origin, connection: { username: 'editor', appPassword: 'password' } })).site;
   assert.equal((await request(`/sites/${site.id}/test`, 'POST', {})).success, true);
   const crawl = await request(`/sites/${site.id}/crawls`, 'POST', {});
   assert.equal(crawl.code, 202);
-  const id = crawl.run.id;
+  id = crawl.run.id;
   async function finished() {
     for (let i = 0; i < 150; i++) {
       const run = (await request(`/runs/${id}`)).run;

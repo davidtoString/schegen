@@ -453,3 +453,12 @@ details > summary { cursor: pointer; color: var(--text-2); font-size: .84rem; ma
 .profile-card.needs-setup .profile-warning-icon, .profile-card.has-gaps .profile-warning-icon { display: block; }
 .profile-card.needs-setup #profile-summary { color: var(--text); font-weight: 500; }
 .profile-card.has-gaps .profile-gaps { font-weight: 500; }
+/* Running operation: the guide line becomes a progress strip */
+.workspace-guide.busy {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: .6rem;
+  padding: .65rem .9rem; border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border)); border-radius: var(--radius);
+  background: var(--amber-bg); color: var(--text); font-weight: 500;
+}
+.workspace-guide.busy::before { content: ""; width: 14px; height: 14px; flex: 0 0 auto; border: 2px solid var(--amber); border-right-color: transparent; border-radius: 999px; animation: spin .8s linear infinite; }
+.workspace-guide.busy::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: var(--progress, 0%); background: var(--amber); transition: width .4s ease; }
+@keyframes spin { to { transform: rotate(360deg); } }

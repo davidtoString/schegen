@@ -35,7 +35,8 @@ test('wizard steps toggle panels, mark progress, and preserve site/run context i
   const element = () => ({
     hidden: false, textContent: '', value: '', checked: false, disabled: false, className: '',
     attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, removeAttribute(key) { delete this.attributes[key]; },
-    selectedOptions: [{ textContent: '' }], addEventListener() {}
+    selectedOptions: [{ textContent: '' }], addEventListener() {},
+    classList: { toggle() {}, add() {}, remove() {} }, style: { setProperty() {} }
   });
   const withClassList = node => {
     const classes = new Set();
