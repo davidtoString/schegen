@@ -51,39 +51,27 @@
         <li><strong>AI Settings</strong>, to use AI. Save an OpenAI or Gemini key; the start and end of the saved key are shown so you can tell keys apart.</li>
       </ol>
 
-      <h3>1. Pages: find and read the site</h3>
-      <p>Click <strong>Crawl site</strong>. Schematic finds pages from WordPress itself, then the sitemap, then links on the homepage. You can also paste a sitemap or specific URLs. It then reads each page. If the site's firewall blocks a page, the content is read through WordPress instead. Pages that still fail can be retried with <strong>Retry failed pages</strong>. Check the pages you want to work on.</p>
-
-      <h3>2. Action: create or delete</h3>
-      <p><strong>Create new schema</strong> writes new schema for the checked pages. <strong>Delete existing schema</strong> removes it (and can be undone).</p>
-
-      <h3>3. Review: generate</h3>
-      <p>Choose how to build the schema, <strong>Rules</strong> or <strong>AI</strong>, then click <strong>Generate schema</strong>.</p>
-      <ul>
-        <li><strong>Rules</strong>: instant, with names and FAQs copied exactly from the page. Each page gets the business, the website, a page entry and what its kind is set to in Page rules. For example, a service page gets breadcrumbs, a Service named after the page ("Furnace Repair") and its FAQs. Each row shows the page's kind; <strong>Types</strong> changes one page.</li>
-        <li><strong>AI</strong>: written from each page's content, in any schema.org types. Pick types in the picker, including <strong>More schema.org types</strong>, or let the AI choose. The app keeps only those types and retries once if one is missing.</li>
-      </ul>
-      <p>Every page is checked for what Google needs (FAQs with answers, a named service, complete breadcrumbs). A preview of the WordPress change runs automatically. Open <strong>Review</strong> on any row to see the schema, what the page has now, and the before/after.</p>
-      <p class="muted">Choose what happens to schema a page already has: replace Rank Math's schema for that page (default), add yours alongside it, replace only Schematic's earlier schema, or skip pages that already have some.</p>
-
-      <h3>4. Apply: publish to the site</h3>
-      <p>Tick <strong>I reviewed the before/after</strong> and click <strong>Apply</strong>. Nothing is written to WordPress before this step. The plugin adds the schema to Rank Math's output for each page, and Schematic checks the live page afterwards.</p>
-      <ul>
-        <li><strong>Verify live pages</strong>: re-check the public pages later, for example after clearing a cache.</li>
-        <li><strong>Undo last change</strong>: restore the previous schema, including Rank Math's own.</li>
-      </ul>
+      <h3>The five steps</h3>
+      <ol>
+        <li><strong>Crawl</strong>: click <strong>Crawl site</strong>. Schematic reads the site's published pages and lists them. If a firewall blocks a page, it is read through WordPress instead. <strong>Resume / retry pages</strong> finishes anything left unread. To work on just a few pages, open <em>Only specific pages</em>.</li>
+        <li><strong>Choose</strong>: tick the pages you want and pick how to build the schema. <strong>Rules</strong> uses your business profile and page rules, with names, FAQs and details copied exactly from each page. <strong>AI</strong> writes it from each page's content in any schema.org types. Tick types and click <strong>Use these types for the ticked pages</strong>, or use <strong>Types</strong> on a row for one page.</li>
+        <li><strong>Generate</strong>: click <strong>Generate schema</strong>. When it finishes you are taken to Review.</li>
+        <li><strong>Review</strong>: click <strong>Compare</strong> on a page to see the schema on the live site now next to the new schema. Removed lines are red and added lines green. Untick anything you don't want to publish.</li>
+        <li><strong>Publish</strong>: click <strong>Publish to site</strong>. Each ticked page's current schema (Rank Math's) is replaced with the new schema and the live page is checked. <strong>Undo last publish</strong> puts the previous schema back.</li>
+      </ol>
+      <p class="muted">Every step can be opened from the tabs at any time. Opening an earlier run from <strong>Run history</strong> takes you to its Review step, so schema you generated before can be published straight away.</p>
 
       <h3>Using a header code plugin instead</h3>
-      <p>In the Apply step, <strong>Download &lt;script&gt; tags</strong> or <strong>Download JSON</strong> for the checked pages, or open <strong>Review</strong> on a row and use <strong>Copy &lt;script&gt; tag</strong>. Paste it into WPCode, Insert Headers and Footers or a similar plugin. Don't also apply it with Schematic, or the page will carry it twice.</p>
+      <p>In the Publish step, open <em>Use a header code plugin instead</em> and <strong>Download &lt;script&gt; tags</strong> or <strong>Download JSON</strong> for the checked pages, or open <strong>Compare</strong> on a row and use <strong>Copy &lt;script&gt; tag</strong>. Paste it into WPCode, Insert Headers and Footers or a similar plugin. Don't also apply it with Schematic, or the page will carry it twice.</p>
 
       <h3>Backups and history</h3>
-      <p>Every page's original schema, each generated version, and every publish, removal and undo is saved on the server. <strong>Download all backups</strong> (Apply step) gets them in one file. <strong>Run history</strong> at the bottom of a site lets you reopen any earlier run.</p>
+      <p>Every page's original schema, each generated version, and every publish, removal and undo is saved on the server. <strong>Download all backups</strong> (Publish step, under <em>Use a header code plugin instead</em>) gets them in one file. <strong>Run history</strong> at the bottom of a site lets you reopen any earlier run.</p>
 
       <h3>Good to know</h3>
       <ul>
         <li>Pages whose canonical URL points to another page start unchecked: search engines ignore schema there.</li>
         <li>The business profile card shows anything missing that Google needs for local results (like a full street address) and what is worth adding.</li>
-        <li>Statuses: <span class="status-dot generated">generated</span> ready, <span class="status-dot generating">generating</span> working, <span class="status-dot failed">failed</span> needs attention. Hover or open Review for the reason.</li>
+        <li>Statuses: <span class="status-dot generated">Schema ready</span> <span class="status-dot published">Published</span> <span class="status-dot generating">Generating</span> <span class="status-dot failed">Failed</span>. The reason for a failure is shown under it and in Compare.</li>
       </ul>
 
       <div class="dialog-actions"><button type="button" class="btn btn-primary" id="close-help-footer">Got it</button></div>

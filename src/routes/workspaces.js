@@ -204,6 +204,14 @@ router.post('/runs/:id/recrawl', route(async (req, res) => {
 }));
 router.get('/runs', (req, res) => res.json({ success: true, runs: store.listRunSummaries(req.query.siteId) }));
 router.get('/runs/:id', route(async (req, res) => res.json({ success: true, run: runView(runFor(req.params.id)) })));
+// The JSON-LD on the live page right now, for the Review comparison.
+router.get('/runs/:id/live', route(async (req, res) => {
+  const run = runFor(req.params.id);
+  if (!run.pages.some(page => page.url === req.query.url)) fail('Page not found in this run.', 404);
+  const client = optionalClient(siteFor(run.siteId));
+  if (!client) fail('Connect the site to check the live page.');
+  res.json({ success: true, schema: await client.inspectPublic(req.query.url), checkedAt: new Date().toISOString() });
+}));
 router.get('/runs/:id/page', route(async (req, res) => {
   const page = runFor(req.params.id).pages.find(item => item.url === req.query.url) || fail('Page not found in this run.', 404);
   res.json({ success: true, page });
@@ -261,6 +269,9 @@ router.post('/runs/:id/generate', route(async (req, res) => {
 router.post('/runs/:id/publish', route(async (req, res) => {
   const run = runFor(req.params.id);
   const pages = select(run, req.body.urls);
+  // One-step publish (the app's normal flow): replace the page's Rank Math schema with ours,
+  // checked against WordPress at write time, with no separate preview or acknowledgement.
+  if (req.body.direct === true) req.body = { ...req.body, dryRun: false, schemaPolicy: 'replace-existing' };
   const removing = req.body.schemaPolicy === 'remove-existing';
   if (!removing && pages.some(p => !p.schema || !p.pageData || !schemas.validate(p.schema, p.pageData).valid)) fail('Every selected page needs valid generated schema.');
   const site = siteFor(run.siteId);
@@ -290,9 +301,10 @@ async function publishPages(run, pages, site, client, dryRun, removing, body) {
         if (dryRun) {
           updatePage(run.id, page.url, { existingReview: review });
         } else {
-          if (!page.existingReview || !equal(page.existingReview, review)) throw new Error('Preview again: the schema, policy, mapping or live page changed since review.');
+          if (!req.body.direct && (!page.existingReview || !equal(page.existingReview, review))) throw new Error('Preview again: the schema, policy, mapping or live page changed since review.');
           if (review.blocked) throw new Error(review.blocked);
-          if (review.requiresAcknowledgement && req.body.acknowledgeConflicts !== true) throw new Error('Review the before/after and acknowledge the selected existing-schema action.');
+          if (!req.body.direct && review.requiresAcknowledgement && req.body.acknowledgeConflicts !== true) throw new Error('Review the before/after and acknowledge the selected existing-schema action.');
+          updatePage(run.id, page.url, { existingReview: review });
         }
         if (review.skip) {
           const result = { success: true, skipped: true, dryRun, verificationMessage: 'Kept existing schema. No WordPress changes.' };

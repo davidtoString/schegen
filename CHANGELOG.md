@@ -2,6 +2,14 @@
 
 All notable changes to the Schematic project (formerly Schema Generator / Schema Workspace).
 
+## [3.4.0] - 2026-10-21
+
+### Changed
+- **Simpler five-step flow:** Crawl → Choose (pages, Rules or AI, types) → Generate → Review → Publish. Removed the Action step and Delete option, the "If a page already has schema" policy, Preview, the approval checkbox and Verify. **Publish to site** replaces each ticked page's current (Rank Math) schema with the new schema, checks the live page and keeps a backup; **Undo last publish** restores it.
+- **Compare** (Review step) shows the live page's current JSON-LD next to the new schema as a side-by-side line diff, with types before/after.
+- Opening a run from history jumps to Review when it has schema, so earlier runs can be published directly. Plain-language page and run statuses.
+- Preview/apply, crawl and generation run in the background with a spinner and progress bar.
+
 ## [3.3.0] - 2026-10-21
 
 ### Changed

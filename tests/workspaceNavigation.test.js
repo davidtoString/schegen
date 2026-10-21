@@ -23,7 +23,9 @@ test('all primary tabs render the same persistent workspace; legacy routes no lo
     assert.doesNotMatch(html, />Advanced Generator</);
     assert.doesNotMatch(html, /1\. Crawl\. 2\. Create schema|Connect each WordPress site once/);
     assert.match(html, /<aside class="sidebar">[\s\S]*id="site-list"[\s\S]*id="open-ai-settings"/);
-    assert.match(html, /Choose a sitemap or specific URLs/);
+    assert.match(html, /Only specific pages/);
+    for (const step of ['crawl', 'choose', 'generate', 'review', 'publish']) assert.match(html, new RegExp(`data-step="${step}"`));
+    assert.doesNotMatch(html, /id="schema-policy"|id="acknowledge-conflicts"|id="preview-publish"|Delete existing schema/, 'no policy, acknowledgement, preview or delete options');
   }
   for (const route of ['/legacy/generator', '/legacy/results']) {
     await assert.rejects(axios.get(base + route), error => error.response?.status === 404);
@@ -42,8 +44,8 @@ test('wizard steps toggle panels, mark progress, and preserve site/run context i
     const classes = new Set();
     return { ...node, classes, classList: { toggle(name, on) { on ? classes.add(name) : classes.delete(name); }, add() {}, remove() {} } };
   };
-  const wizardPanels = ['pages', 'action', 'review', 'apply'].map(step => ({ ...element(), dataset: { wizardStep: step } }));
-  const wizardButtons = ['pages', 'action', 'review', 'apply'].map(step => withClassList({ ...element(), dataset: { step } }));
+  const wizardPanels = ['crawl', 'choose', 'generate', 'review', 'publish'].map(step => ({ ...element(), dataset: { wizardStep: step } }));
+  const wizardButtons = ['crawl', 'choose', 'generate', 'review', 'publish'].map(step => withClassList({ ...element(), dataset: { step } }));
   let location = new URL('http://localhost:3000/');
   const session = new Map();
   const context = vm.createContext({
@@ -64,17 +66,18 @@ test('wizard steps toggle panels, mark progress, and preserve site/run context i
     }
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/js/workspace.js'), 'utf8'), context);
-  vm.runInContext("state.activeSite = { id: 'site-a', name: 'Alpha' }; state.activeRun = { id: 'run-a', pages: [{url:'https://a.test/page'}] }; syncNavigation(); setWizardStep('action');", context);
+  vm.runInContext("state.activeSite = { id: 'site-a', name: 'Alpha' }; state.activeRun = { id: 'run-a', pages: [{url:'https://a.test/page', pageData: {}}] }; syncNavigation(); setWizardStep('choose');", context);
   assert.equal(location.searchParams.get('site'), 'site-a');
   assert.equal(location.searchParams.get('run'), 'run-a');
   assert.equal(wizardPanels[1].hidden, false); assert.equal(wizardPanels[0].hidden, true);
   assert.ok(wizardButtons[1].classes.has('active'));
-  assert.ok(wizardButtons[0].classes.has('done'));
+  assert.ok(wizardButtons[0].classes.has('done'), 'crawl is done once pages were read');
   assert.equal(wizardButtons[1].attributes['aria-current'], 'step');
-  vm.runInContext("setWizardStep('review');", context);
-  assert.equal(wizardPanels[2].hidden, false); assert.equal(wizardPanels[1].hidden, true);
-  assert.ok(wizardButtons[1].classes.has('reachable'), 'a completed step stays clickable to go back');
-  assert.equal(vm.runInContext('state.wizardMaxStep', context), 2);
+  vm.runInContext("setWizardStep('publish');", context);
+  assert.equal(wizardPanels[4].hidden, false); assert.equal(wizardPanels[1].hidden, true);
+  assert.ok(wizardButtons[2].classes.has('reachable'), 'every step can be opened');
+  vm.runInContext("state.activeRun.pages[0].schema = {}; resetWizard();", context);
+  assert.equal(vm.runInContext('state.wizardStep', context), 'review', 'a run with schema opens on Review');
   assert.equal(vm.runInContext('state.activeRun.pages.length', context), 1);
   assert.deepEqual(JSON.parse(session.get('schematic-context')), { site: 'site-a', run: 'run-a' });
 });

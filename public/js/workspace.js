@@ -1,5 +1,6 @@
-const state = { sites: [], activeSite: null, activeRun: null, poller: null, wizardStep: 'pages', wizardAction: null, wizardMaxStep: 0, schemaTypes: [], meta: { kinds: {}, buildable: [], businessTypes: [] }, plans: {}, reviewSchema: null, engine: 'rules' };
-const WIZARD_STEPS = ['pages', 'action', 'review', 'apply'];
+const state = { sites: [], activeSite: null, activeRun: null, poller: null, wizardStep: 'crawl', schemaTypes: [], meta: { kinds: {}, buildable: [], businessTypes: [] }, plans: {}, reviewSchema: null, engine: 'rules' };
+const WIZARD_STEPS = ['crawl', 'choose', 'generate', 'review', 'publish'];
+const BUSY = ['discovering', 'crawling', 'generating', 'publishing'];
 
 const $ = id => document.getElementById(id);
 function savedContext() { try { return JSON.parse(sessionStorage.getItem('schematic-context') || '{}'); } catch { return {}; } }
@@ -11,42 +12,30 @@ function syncNavigation(replace = true) {
   try { sessionStorage.setItem('schematic-context', JSON.stringify({ site: state.activeSite?.id, run: state.activeRun?.id })); } catch { /* URL still preserves context. */ }
 }
 
+// Open a run where its work left off: schema → Review, crawled pages → Choose, else Crawl.
 function resetWizard() {
-  state.wizardStep = 'pages'; state.wizardAction = null; state.wizardMaxStep = 0;
-  $('review-create-panel').hidden = false; $('review-delete-panel').hidden = true; $('schema-policy-group').hidden = false;
-}
-
-function applyWizardAction(action) {
-  state.wizardAction = action;
-  $('review-create-panel').hidden = action !== 'create';
-  $('review-delete-panel').hidden = action !== 'delete';
-  $('schema-policy-group').hidden = action === 'delete';
-  $('schema-policy').value = action === 'delete' ? 'remove-existing' : 'replace-existing';
-  $('acknowledge-conflicts').checked = false;
+  const pages = state.activeRun?.pages || [];
+  state.wizardStep = pages.some(page => page.schema) ? 'review' : pages.some(page => page.pageData) ? 'choose' : 'crawl';
 }
 
 function setWizardStep(step) {
   state.wizardStep = step;
-  state.wizardMaxStep = Math.max(state.wizardMaxStep || 0, WIZARD_STEPS.indexOf(step));
   renderWizard();
 }
 
 function guideText(run) {
-  if (!state.activeSite) return 'Start here: add your WordPress site, then save your AI key in AI Settings.';
-  if (!run) return 'Step 1: Test the connection, then click Crawl site to find pages.';
+  if (!state.activeSite) return 'Start here: add your WordPress site.';
+  if (!run) return 'Click Crawl site to find the pages on this site.';
   if (run.status === 'discovering') return 'Finding pages…';
-  if (run.status === 'crawling') return `Reading pages… ${run.progress ? `${run.progress.done} of ${run.progress.total}. ` : ''}Select the ones you want below, then continue.`;
-  if (run.status === 'generating') return `Generating schema… ${run.progress ? `${run.progress.done} of ${run.progress.total} pages.` : 'Pages update as they finish.'}`;
-  if (run.status === 'publishing') {
-    const progress = run.progress;
-    const label = progress?.dryRun === false ? 'Applying changes to WordPress' : 'Previewing changes (checking WordPress and the live pages)';
-    return progress ? `${label}… ${progress.done} of ${progress.total} pages.` : `${label}…`;
-  }
+  if (run.status === 'crawling') return `Reading pages… ${run.progress ? `${run.progress.done} of ${run.progress.total}.` : ''}`;
+  if (run.status === 'generating') return `Generating schema… ${run.progress ? `${run.progress.done} of ${run.progress.total} pages.` : ''}`;
+  if (run.status === 'publishing') return `Publishing to the site… ${run.progress ? `${run.progress.done} of ${run.progress.total} pages.` : ''}`;
   switch (state.wizardStep) {
-    case 'pages': return 'Crawl the site, then check the pages you want to work with below.';
-    case 'action': return 'Choose whether to create new schema or delete existing schema for the selected pages.';
-    case 'review': return state.wizardAction === 'delete' ? 'Removal was previewed automatically for the pages you selected — open Review on each row, then continue.' : 'Choose Rules or AI and click Generate. A preview runs automatically when it finishes.';
-    case 'apply': return 'Open Review on each page below, approve, then apply. Undo remains available afterward.';
+    case 'crawl': return 'Crawl the site to list its pages.';
+    case 'choose': return 'Tick the pages to create schema for and set their types.';
+    case 'generate': return 'Generate schema for the ticked pages.';
+    case 'review': return 'Compare the new schema with what is on the site now.';
+    case 'publish': return 'Publish the ticked pages to the site.';
     default: return '';
   }
 }
@@ -54,17 +43,20 @@ function guideText(run) {
 function renderWizard() {
   document.querySelectorAll('[data-wizard-step]').forEach(panel => { panel.hidden = panel.dataset.wizardStep !== state.wizardStep; });
   const currentIndex = WIZARD_STEPS.indexOf(state.wizardStep);
+  const pages = state.activeRun?.pages || [];
+  // A step is "done" when its work exists in this run; every step can be opened at any time.
+  const stepDone = { crawl: pages.some(page => page.pageData), choose: pages.some(page => page.schema), generate: pages.some(page => page.schema), review: pages.some(page => page.writeReceipt), publish: pages.some(page => page.writeReceipt && !page.writeReceipt.rolledBack) };
   document.querySelectorAll('.wizard-step').forEach(button => {
     const index = WIZARD_STEPS.indexOf(button.dataset.step);
     button.classList.toggle('active', index === currentIndex);
-    button.classList.toggle('done', index < currentIndex);
-    button.classList.toggle('reachable', index <= (state.wizardMaxStep || 0) && index !== currentIndex);
+    button.classList.toggle('done', index !== currentIndex && Boolean(stepDone[button.dataset.step]));
+    button.classList.toggle('reachable', index !== currentIndex);
     if (index === currentIndex) button.setAttribute('aria-current', 'step'); else button.removeAttribute('aria-current');
   });
   $('workflow-guide').textContent = guideText(state.activeRun);
   // While a crawl, generation or publish runs, the guide becomes a visible progress strip.
   const run = state.activeRun;
-  const busy = ['discovering', 'crawling', 'generating', 'publishing'].includes(run?.status);
+  const busy = BUSY.includes(run?.status);
   $('workflow-guide').classList.toggle('busy', busy);
   const { done = 0, total = 0 } = (busy && run.progress) || {};
   $('workflow-guide').style.setProperty('--progress', total ? `${Math.round((done / total) * 100)}%` : '0%');
@@ -85,25 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('ai-settings-form').addEventListener('submit', saveAISettings);
   $('ai-provider').addEventListener('change', applyAIProvider);
   loadAISettings().catch(error => notify(error.message, 'error'));
-  document.querySelectorAll('.wizard-step').forEach(button => button.addEventListener('click', () => {
-    const index = WIZARD_STEPS.indexOf(button.dataset.step);
-    if (index <= (state.wizardMaxStep || 0)) setWizardStep(button.dataset.step);
+  document.querySelectorAll('.wizard-step').forEach(button => button.addEventListener('click', () => setWizardStep(button.dataset.step)));
+  document.querySelectorAll('.step-next').forEach(button => button.addEventListener('click', () => {
+    if (!selectedUrls().length) return notify('Tick at least one page first.', 'error');
+    setWizardStep(button.dataset.next);
   }));
-  $('pages-continue').addEventListener('click', () => {
-    if (!selectedUrls().length) return notify('Select at least one page first.', 'error');
-    setWizardStep('action');
-  });
-  $('choose-create').addEventListener('click', () => { applyWizardAction('create'); setWizardStep('review'); });
-  $('choose-delete').addEventListener('click', async () => {
-    applyWizardAction('delete'); setWizardStep('review');
-    // Pages are already selected from the Pages step; preview removal for them right away
-    // instead of making the user click "Preview changes" as a separate manual gate.
-    await publishRun(true);
-  });
-  $('action-back').addEventListener('click', () => setWizardStep('pages'));
-  $('review-back').addEventListener('click', () => setWizardStep('action'));
-  $('review-continue').addEventListener('click', () => setWizardStep('apply'));
-  $('apply-back').addEventListener('click', () => setWizardStep('review'));
   window.addEventListener('popstate', async () => {
     const query = new URLSearchParams(window.location.search);
     try {
@@ -121,19 +99,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('edit-site').addEventListener('click', editSite);
   $('start-crawl').addEventListener('click', discoverPages);
   $('generate-run').addEventListener('click', generateRun);
-  $('preview-publish').addEventListener('click', () => publishRun(true));
-  $('publish-run').addEventListener('click', () => publishRun(false));
-  $('schema-policy').addEventListener('change', async () => {
-    $('acknowledge-conflicts').checked = false; updatePublishControls();
-    // Changing the policy invalidates the previous preview; re-run it automatically instead
-    // of leaving "Continue to Apply" stuck disabled until a manual re-preview.
-    if (state.activeRun?.pages.some(page => page.schema) && selectedUrls().length) await publishRun(true);
-  });
-  $('acknowledge-conflicts').addEventListener('change', updatePublishControls);
+  $('publish-run').addEventListener('click', publishRun);
   $('rollback-run').addEventListener('click', async () => {
-    const urls = selectedUrls();
-      if (!urls.length) return notify('Select pages with an app change to undo.', 'error');
-      if (!window.confirm(`Undo the last app change for ${urls.length} page(s), restoring previous schema and Rank Math output? Rank Math settings and other metadata will not change.`)) return;
+    const urls = selectedUrls().filter(url => state.activeRun.pages.find(page => page.url === url)?.writeReceipt?.rolledBack === false);
+    if (!urls.length) return notify('Tick published pages to undo.', 'error');
+    if (!window.confirm(`Undo the last publish on ${urls.length} page(s)? Their previous schema (including Rank Math's) comes back.`)) return;
     try {
       const body = await api(`/api/workspaces/runs/${state.activeRun.id}/rollback`, { method: 'POST', body: JSON.stringify({ urls }) });
       state.activeRun = body.run; renderRun(); await refreshHistory();
@@ -141,12 +111,6 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (error) { notify(error.message, 'error'); }
   });
   $('close-schema').addEventListener('click', () => $('schema-dialog').close());
-  $('verify-run').addEventListener('click', async () => {
-    try {
-      const body = await api(`/api/workspaces/runs/${state.activeRun.id}/verify`, { method: 'POST', body: JSON.stringify({ urls: selectedUrls() }) });
-      state.activeRun = body.run; renderRun();
-    } catch (error) { notify(error.message, 'error'); }
-  });
   $('recrawl-failed').addEventListener('click', recrawlFailed);
   $('apply-types').addEventListener('click', () => {
     const urls = selectedUrls();
@@ -193,12 +157,15 @@ async function loadSchemaTypes() {
   $('business-types').replaceChildren(...body.businessTypes.map(type => Object.assign(document.createElement('option'), { value: type })));
   renderTypeOptions('type-options', []);
   renderMoreTypes('type-more', []);
+  applyEngine(state.engine);
 }
 function applyEngine(engine) {
   state.engine = engine;
   $('ai-fields').hidden = engine !== 'ai';
-  $('ai-type-picker').hidden = engine !== 'ai';
-  $('rules-hint').hidden = engine !== 'rules';
+  $('type-more').hidden = engine !== 'ai';
+  $('type-picker-hint').textContent = engine === 'rules'
+    ? 'By default each page gets the types for its kind (Business profile → Page rules). To change the ticked pages, tick types here and click the button.'
+    : 'Tick types for the ticked pages, or leave all unticked to let the AI choose.';
   // The picker lists what this engine can build; keep any ticks that still apply.
   renderTypeOptions('type-options', readPlan('type-options', 'type-more').types);
   if (state.activeRun) renderRun();
@@ -499,10 +466,11 @@ async function discoverPages() {
   try {
     const urls = $('manual-urls').value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
     const body = await api(`/api/workspaces/sites/${state.activeSite.id}/crawls`, {
-      method: 'POST', body: JSON.stringify({ sitemapUrl: $('sitemap-url').value.trim(), postTypeFilter: $('page-filter').value, urls })
+      method: 'POST', body: JSON.stringify({ sitemapUrl: $('sitemap-url').value.trim(), urls })
     });
     state.activeRun = body.run; renderRun(); await refreshHistory();
-    notify('Crawl started. Pages will appear below as they are processed — select the ones you want, then continue.', 'success');
+    notify('Crawl started. Pages appear in the list below as they are read.', 'success');
+    state.afterPoll = async () => { if (state.activeRun.pages.some(page => page.pageData)) setWizardStep('choose'); };
     startPolling();
   } catch (error) { notify(error.message, 'error'); }
   finally { button.disabled = false; button.textContent = 'Crawl site'; }
@@ -537,12 +505,10 @@ async function generateRun() {
       method: 'POST', body: JSON.stringify({ urls, engine: state.engine, ...generationPlans(urls), provider: $('ai-provider').value, model: selectedModel('ai-model') || undefined })
     });
     state.activeRun.status = 'generating'; renderRun();
-    notify('Generation started. This page will update as each URL completes.', 'success');
-    // Auto-preview once generation finishes: read-only (no WordPress write), so it just
-    // saves the redundant manual click before "Continue to Apply" — the actual write still
-    // requires the explicit acknowledgement checkbox and Apply click.
     state.afterPoll = async () => {
-      if (state.activeRun.pages.some(page => page.schema)) await publishRun(true);
+      const made = state.activeRun.pages.filter(page => urls.includes(page.url) && page.schema).length;
+      notify(`Schema ready for ${made} of ${urls.length} page(s). Compare them, then publish.`, made === urls.length ? 'success' : 'error');
+      if (made) setWizardStep('review');
     };
     startPolling();
   } catch (error) { notify(error.message, 'error'); }
@@ -571,30 +537,94 @@ function startPolling() {
   }, 1500);
 }
 
-async function publishRun(dryRun) {
-  const urls = selectedUrls();
-  if (!urls.length) return notify('Select pages first.', 'error');
-  if (['discovering', 'crawling', 'generating', 'publishing'].includes(state.activeRun?.status)) return notify('Wait for the current step to finish.', 'info');
-  if (!dryRun && !window.confirm(`Apply "${$('schema-policy').selectedOptions[0].textContent}" to ${urls.length} page(s)? This changes public schema. A backup is kept for Undo.`)) return;
+async function publishRun() {
+  const ticked = selectedUrls();
+  const ready = state.activeRun.pages.filter(page => ticked.includes(page.url) && page.schema && page.validation?.valid).map(page => page.url);
+  if (!ready.length) return notify('Tick pages that have schema ready.', 'error');
+  if (BUSY.includes(state.activeRun?.status)) return notify('Wait for the current step to finish.', 'info');
+  const skipped = ticked.length - ready.length;
+  if (!window.confirm(`Publish schema to ${ready.length} page(s) on ${new URL(state.activeSite.url).host}?${skipped ? ` (${skipped} ticked page(s) without ready schema are skipped.)` : ''}\n\nThis replaces their current schema. Undo puts it back.`)) return;
   try {
-    await api(`/api/workspaces/runs/${state.activeRun.id}/publish`, {
-      method: 'POST', body: JSON.stringify({ urls, dryRun, schemaPolicy: $('schema-policy').value, acknowledgeConflicts: $('acknowledge-conflicts').checked })
-    });
+    await api(`/api/workspaces/runs/${state.activeRun.id}/publish`, { method: 'POST', body: JSON.stringify({ urls: ready, direct: true }) });
     state.activeRun.status = 'publishing';
-    state.activeRun.progress = { done: 0, total: urls.length, dryRun };
+    state.activeRun.progress = { done: 0, total: ready.length, dryRun: false };
     renderRun();
     // Runs on the server in the background; report from the finished run's lastPublish.
     state.afterPoll = async () => {
       const results = state.activeRun.lastPublish?.results || [];
-      const failed = results.filter(item => !item.success);
-      const count = filter => results.filter(filter).length;
-      const summary = dryRun
-        ? `Preview ready for ${count(item => item.success && !item.skipped)} page(s). Kept unchanged: ${count(item => item.skipped)}.`
-        : `Saved: ${count(item => item.stored)}. Kept unchanged: ${count(item => item.skipped)}. Verified live: ${count(item => item.verified)}.`;
-      notify(failed.length ? `${summary} ${failed.length} page(s) need attention; see their status below.` : summary, failed.length ? 'error' : 'success');
+      const published = results.filter(item => item.stored).length;
+      const live = results.filter(item => item.verified).length;
+      const failed = results.filter(item => !item.success).length;
+      notify(`Published ${published} page(s)${published ? `; ${live} confirmed on the live site${published > live ? ` (${published - live} waiting on the site's cache)` : ''}` : ''}.${failed ? ` ${failed} failed; see their status below.` : ''}`, failed ? 'error' : 'success');
     };
     startPolling();
   } catch (error) { notify(error.message, 'error'); }
+}
+
+const PAGE_STATUS = { queued: 'Waiting', crawling: 'Reading', crawled: 'Read', failed: 'Failed', generating: 'Generating', generated: 'Schema ready', invalid: 'Needs fixes', publish_failed: 'Publish failed', published: 'Published', verification_pending: 'Published, live check pending', schema_removed: 'Removed', rolled_back: 'Undone' };
+const RUN_STATUS = { discovering: 'Finding pages', crawling: 'Reading pages', ready: 'Crawled', generating: 'Generating', publishing: 'Publishing', completed: 'Done', completed_with_errors: 'Done, some pages need attention', failed: 'Failed', interrupted: 'Interrupted' };
+
+// Every @type in a set of JSON-LD blocks, for the Compare summary.
+function schemaTypesOf(value) {
+  const types = [];
+  const walk = item => { if (Array.isArray(item)) item.forEach(walk); else if (item && typeof item === 'object') { if (item['@graph']) walk(item['@graph']); else if (item['@type']) types.push(...[].concat(item['@type'])); } };
+  walk(value);
+  return [...new Set(types)];
+}
+// Side-by-side line diff (longest common subsequence) of two pretty-printed JSON documents.
+function renderDiff(before, after) {
+  const a = before ? JSON.stringify(before, null, 2).split('\n') : [];
+  const b = after ? JSON.stringify(after, null, 2).split('\n') : [];
+  const ops = [];
+  if (a.length * b.length > 4e6) { a.forEach(line => ops.push(['del', line])); b.forEach(line => ops.push(['add', line])); }
+  else {
+    const width = b.length + 1; const lcs = new Uint16Array((a.length + 1) * width);
+    for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) lcs[i * width + j] = a[i] === b[j] ? lcs[(i + 1) * width + j + 1] + 1 : Math.max(lcs[(i + 1) * width + j], lcs[i * width + j + 1]);
+    let i = 0; let j = 0;
+    while (i < a.length || j < b.length) {
+      if (i < a.length && j < b.length && a[i] === b[j]) { ops.push(['same', a[i]]); i++; j++; }
+      else if (j < b.length && (i === a.length || lcs[i * width + j + 1] >= lcs[(i + 1) * width + j])) { ops.push(['add', b[j]]); j++; }
+      else { ops.push(['del', a[i]]); i++; }
+    }
+  }
+  const rows = []; let dels = []; let adds = [];
+  const flush = () => { for (let k = 0; k < Math.max(dels.length, adds.length); k++) rows.push([dels[k], adds[k]]); dels = []; adds = []; };
+  for (const [kind, line] of ops) { if (kind === 'same') { flush(); rows.push([{ kind, line }, { kind, line }]); } else (kind === 'del' ? dels : adds).push({ kind, line }); }
+  flush();
+  const cell = item => { const el = document.createElement('div'); el.className = `diff-line ${item ? item.kind : 'empty'}`; el.textContent = item ? item.line : ''; return el; };
+  const head = (text) => Object.assign(document.createElement('div'), { className: 'diff-head', textContent: text });
+  $('schema-diff').replaceChildren(head('On the site now'), head('New schema'), ...rows.flatMap(([left, right]) => [cell(left), cell(right)]));
+  if (!a.length) $('schema-diff').children[2]?.replaceWith(Object.assign(cell(null), { textContent: 'No schema on the page now.' }));
+}
+async function openCompare(page, button) {
+  button.disabled = true;
+  let detail = page; let live = null;
+  try {
+    const [pageBody, liveBody] = await Promise.all([
+      api(`/api/workspaces/runs/${state.activeRun.id}/page?url=${encodeURIComponent(page.url)}`),
+      api(`/api/workspaces/runs/${state.activeRun.id}/live?url=${encodeURIComponent(page.url)}`).catch(() => null)
+    ]);
+    detail = pageBody.page; live = liveBody;
+  } catch (error) { notify(error.message, 'error'); }
+  finally { button.disabled = false; }
+  const pageData = detail.pageData || {};
+  const before = live ? live.schema : pageData.existingSchema || [];
+  state.reviewSchema = page.schema || null;
+  $('schema-review-title').textContent = page.title || 'Schema';
+  $('schema-review-url').textContent = page.url;
+  $('compare-before-types').textContent = schemaTypesOf(before).join(', ') || 'No schema';
+  $('compare-after-types').textContent = schemaTypesOf(page.schema).join(', ') || 'Not generated yet';
+  $('compare-source').textContent = live ? `Live page checked ${new Date(live.checkedAt).toLocaleTimeString()}` : 'Live page unavailable; showing what the crawl found';
+  // A page usually has one JSON-LD block; compare it directly so both sides line up.
+  renderDiff(before.length === 1 ? before[0] : before.length ? before : null, page.schema || null);
+  const made = page.generation?.engine === 'rules' ? 'Built by rules from the business profile.' : page.generation?.engine === 'ai' ? `Written by AI: ${page.generation.provider} ${page.generation.model}${page.generation.keyHint ? `, ${page.generation.keySource || 'key'} ${page.generation.keyHint}` : ''}.` : '';
+  const publishError = page.status === 'publish_failed' ? page.publishError : '';
+  const messages = [made, pageData.fetchWarning, ...(page.validation?.errors || []), ...(page.validation?.warnings || []), page.error, publishError, page.writeReceipt && !page.writeReceipt.rolledBack ? page.publishResult?.verificationMessage : ''].filter(Boolean);
+  $('schema-review-messages').hidden = !messages.length;
+  $('schema-review-messages').replaceChildren(...messages.map(text => Object.assign(document.createElement('p'), { textContent: text })));
+  $('schema-review-records').textContent = JSON.stringify({ lastPublish: page.writeReceipt, earlier: page.receiptHistory, undo: page.rollbackHistory }, null, 2);
+  $('schema-review-content').textContent = pageData.content || 'No crawled content.';
+  $('schema-dialog').showModal();
 }
 
 function renderRun() {
@@ -604,16 +634,15 @@ function renderRun() {
   if (!run) {
     $('run-title').textContent = 'No crawl yet'; $('run-status').textContent = 'Ready'; $('run-summary').replaceChildren();
     $('pages-table').innerHTML = '<p class="muted">Discover pages to begin.</p>';
-    $('start-crawl').disabled = false; $('recrawl-failed').hidden = true; $('rollback-run').disabled = true; $('verify-run').disabled = true; $('run-message').textContent = '';
+    $('start-crawl').disabled = false; $('recrawl-failed').hidden = true; $('rollback-run').disabled = true; $('run-message').textContent = '';
     renderWizard();
     return;
   }
   $('run-title').textContent = `Run from ${new Date(run.createdAt).toLocaleString()}`;
   $('run-message').textContent = [run.error, run.discoveryWarning, run.limited ? 'Crawl limit reached. Increase MAX_CRAWL_PAGES or crawl additional URLs separately.' : ''].filter(Boolean).join(' ');
-  $('run-status').textContent = run.status.replaceAll('_', ' ');
+  $('run-status').textContent = RUN_STATUS[run.status] || run.status.replaceAll('_', ' ');
   $('run-status').className = `status-badge ${run.status}`;
-  const metrics = [['Discovered', run.summary.discovered], ['Generated', run.summary.generated], ['Failed', run.summary.failed], ['Published', run.summary.published]];
-  if (run.summary.removed) metrics.push(['Removed', run.summary.removed]);
+  const metrics = [['Pages', run.summary.discovered], ['Schema ready', run.summary.generated], ['Published', run.summary.published], ['Failed', run.summary.failed]];
   $('run-summary').replaceChildren(...metrics.map(([label, value]) => {
     const item = document.createElement('div'); const number = document.createElement('strong'); number.textContent = value;
     const text = document.createElement('span'); text.textContent = label; item.append(number, text); return item;
@@ -624,38 +653,18 @@ function renderRun() {
   run.pages.forEach(page => {
     const row = document.createElement('tr');
     const selectCell = document.createElement('td'); const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'page-select'; checkbox.value = page.url; const canonicalElsewhere = page.pageData?.canonical && page.pageData.canonical.replace(/\/$/, '') !== page.url.replace(/\/$/, '');
-    checkbox.checked = !canonicalElsewhere && ['queued', 'crawled', 'generated', 'verification_pending', 'publish_failed'].includes(page.status); checkbox.setAttribute('aria-label', `Select ${page.title || page.url}`); selectCell.append(checkbox);
+    checkbox.checked = !canonicalElsewhere && ['queued', 'crawled', 'generated', 'publish_failed'].includes(page.status); checkbox.setAttribute('aria-label', `Select ${page.title || page.url}`); selectCell.append(checkbox);
     const pageCell = document.createElement('td'); const link = document.createElement('a'); link.href = page.url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = page.title || page.url; const url = document.createElement('small'); url.textContent = page.url; pageCell.append(link, url);
     const schemaCell = document.createElement('td'); schemaCell.textContent = page.schemaTypes?.join(', ') || '—';
-    const review = document.createElement('button'); review.className = 'btn btn-secondary'; review.textContent = 'Review';
-    review.addEventListener('click', async () => {
-      // The table only carries a light page summary; fetch the crawled content for this page now.
-      let detail = page;
-      review.disabled = true;
-      try { detail = (await api(`/api/workspaces/runs/${state.activeRun.id}/page?url=${encodeURIComponent(page.url)}`)).page; }
-      catch (error) { notify(error.message, 'error'); }
-      finally { review.disabled = false; }
-      const pageData = detail.pageData || {};
-      $('schema-review-url').textContent = page.url;
-      state.reviewSchema = page.schema || null;
-      $('schema-review-json').textContent = JSON.stringify(page.schema || {}, null, 2);
-      $('schema-review-existing').textContent = JSON.stringify(page.existingReview?.existing || pageData.existingSchema || [], null, 2);
-      const preview = page.existingReview;
-      $('schema-review-decision').textContent = preview ? [preview.skip ? 'Keep existing: no changes.' : preview.suppressRankMath ? preview.decision === 'remove-existing' ? 'Remove public Rank Math and app schema from this page. Underlying Rank Math settings remain for Undo.' : 'Suppress the Rank Math page graph and replace it with the AI graph below. Other plugin output remains.' : 'App-managed storage will be replaced; Rank Math/third-party nodes stay active.', preview.blocked, ...(preview.conflicts || []), preview.requiresAcknowledgement ? 'Explicit approval required.' : ''].filter(Boolean).join('\n') : 'Click Preview to fetch current WordPress schema before publishing.';
-      $('schema-review-before').textContent = JSON.stringify(preview?.before || null, null, 2);
-      $('schema-review-after').textContent = JSON.stringify(preview ? preview.after : page.schema || null, null, 2);
-      $('schema-review-records').textContent = JSON.stringify({ insertions: page.insertionHistory, previousReceipts: page.receiptHistory, lastInsertion: page.writeReceipt, rollbacks: page.rollbackHistory }, null, 2);
-      $('schema-review-content').textContent = pageData.content || 'No crawled content.';
-      const made = page.generation?.engine === 'rules' ? 'Built by rules from the business profile.' : page.generation?.engine === 'ai' ? `Generated by AI: ${page.generation.provider} ${page.generation.model}${page.generation.keyHint ? `, ${page.generation.keySource || 'key'} ${page.generation.keyHint}` : ''}.` : '';
-      $('schema-review-messages').textContent = [made, pageData.fetchWarning, ...(page.validation?.errors || []), ...(page.validation?.warnings || []), page.error, page.publishError, page.publishResult?.verificationMessage].filter(Boolean).join('\n');
-      $('schema-dialog').showModal();
-    });
+    const review = document.createElement('button'); review.className = 'btn btn-secondary'; review.textContent = 'Compare';
+    review.disabled = !page.schema; review.title = page.schema ? 'Compare with the schema on the site now' : 'Generate schema first';
+    review.addEventListener('click', () => openCompare(page, review));
     const planText = document.createElement('span'); planText.className = 'plan-summary'; planText.textContent = describePlan(planFor(page), page);
     const planButton = document.createElement('button'); planButton.className = 'btn btn-secondary'; planButton.textContent = 'Types';
     planButton.disabled = !page.pageData; planButton.addEventListener('click', () => openPlan(page));
     schemaCell.append(planText, review, planButton);
-    const statusCell = document.createElement('td'); const badge = document.createElement('span'); badge.className = `status-dot ${page.status}`; badge.textContent = page.status; badge.title = page.error || ''; statusCell.append(badge);
-    const detail = document.createElement('small'); detail.textContent = page.error || page.pageData?.fetchWarning || page.publishError || page.decisionMessage || page.publishResult?.verificationMessage || page.preview?.verificationMessage || ''; statusCell.append(detail);
+    const statusCell = document.createElement('td'); const badge = document.createElement('span'); badge.className = `status-dot ${page.status}`; badge.textContent = PAGE_STATUS[page.status] || page.status; badge.title = page.error || ''; statusCell.append(badge);
+    const detail = document.createElement('small'); detail.textContent = page.error || (page.status === 'publish_failed' ? page.publishError : '') || (page.writeReceipt && !page.writeReceipt.rolledBack ? page.publishResult?.verificationMessage : '') || page.pageData?.fetchWarning || ''; statusCell.append(detail);
     if (oldSelections.has(page.url)) checkbox.checked = oldSelections.get(page.url);
     checkbox.addEventListener('change', updatePublishControls);
     row.append(selectCell, pageCell, schemaCell, statusCell); tbody.append(row);
@@ -668,23 +677,14 @@ function renderRun() {
   $('recrawl-failed').hidden = !unread.length;
   $('recrawl-failed').textContent = `Resume / retry ${unread.length} page${unread.length === 1 ? '' : 's'}`;
   $('recrawl-failed').disabled = busy;
-  $('verify-run').disabled = busy || !(run.pages.some(page => page.schema) || run.pages.some(page => page.status === 'schema_removed'));
   $('rollback-run').disabled = busy || !run.pages.some(page => page.writeReceipt && !page.writeReceipt.rolledBack);
   renderWizard();
 }
 
 function renderSelectionSummary(urls, total, run) {
-  let text = '';
-  if (run && total) {
-    if (!urls.length) text = 'No pages selected — nothing will be affected.';
-    else {
-      const labels = urls.slice(0, 3).map(url => { try { return new URL(url).pathname || '/'; } catch { return url; } });
-      const more = urls.length > 3 ? ` + ${urls.length - 3} more` : '';
-      text = `Affects ${urls.length} of ${total} page(s): ${labels.join(', ')}${more}`;
-    }
-  }
+  const text = run && total ? (urls.length ? `${urls.length} of ${total} pages ticked.` : 'No pages ticked.') : '';
   document.querySelectorAll('.selection-hint').forEach(el => { el.textContent = text; });
-  if ($('selection-summary')) $('selection-summary').textContent = text;
+  if ($('selection-summary')) $('selection-summary').textContent = '';
 }
 
 function updatePublishControls() {
@@ -698,16 +698,18 @@ function updatePublishControls() {
   }
   renderSelectionSummary(urls, count, run);
   const pages = run?.pages.filter(page => urls.includes(page.url)) || [];
-  const busy = !run || ['generating', 'publishing', 'discovering', 'crawling'].includes(run.status);
-  const policy = $('schema-policy').value;
-
-  $('pages-continue').disabled = busy || !urls.length;
-  $('generate-run').disabled = busy || !pages.length;
-  $('preview-publish').disabled = busy || !pages.length || (policy !== 'remove-existing' && pages.some(page => !page.validation?.valid));
-  const reviewed = pages.length > 0 && !pages.some(page => !page.existingReview || page.existingReview.decision !== policy || page.existingReview.blocked);
-  $('review-continue').disabled = busy || !reviewed;
-  $('publish-run').disabled = busy || !reviewed || !$('acknowledge-conflicts').checked;
-  $('publish-run').textContent = policy === 'remove-existing' ? 'Remove schema from selected pages' : 'Apply reviewed changes';
+  const busy = !run || BUSY.includes(run.status);
+  const readable = pages.filter(page => page.pageData).length;
+  const publishable = pages.filter(page => page.schema && page.validation?.valid).length;
+  $('crawl-continue').disabled = busy || !run?.pages.some(page => page.pageData);
+  $('choose-continue').disabled = busy || !readable;
+  $('generate-run').disabled = busy || !readable;
+  $('generate-run').textContent = readable ? `Generate schema for ${readable} page${readable === 1 ? '' : 's'}` : 'Generate schema';
+  $('generate-summary').textContent = `Using ${state.engine === 'rules' ? 'Rules (business profile and page rules)' : 'AI'}. Change this in Choose.`;
+  $('review-continue').disabled = busy || !pages.some(page => page.schema);
+  $('publish-run').disabled = busy || !publishable;
+  $('publish-run').textContent = publishable ? `Publish ${publishable} page${publishable === 1 ? '' : 's'} to site` : 'Publish to site';
+  $('rollback-run').disabled = busy || !pages.some(page => page.writeReceipt && !page.writeReceipt.rolledBack);
 }
 
 async function refreshHistory() {

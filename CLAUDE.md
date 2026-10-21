@@ -12,7 +12,10 @@ Live at https://schemagenerator.onpurposemedia.com (Docker on this host, behind 
 4. **Business profile** (card on the site page; `site.profile` + `site.rules`): `POST /sites/:id/profile/detect` suggests it (`businessProfile.detect`: existing JSON-LD on crawled pages > homepage logo/tel/mailto/social links/footer address > page-title brand and main city > WP site title; crawler service areas cleaned to city names). The user checks it and saves (`PUT /sites/:id/profile`). `gaps()` reports what is missing for local results vs worth adding. **Page rules** map each page kind to buildable types.
 5. Optional: **AI Settings** (sidebar), only for the AI engine. The key is encrypted in `data/workspace.json`; the UI shows a masked hint (`keyHint`: first 7 + last 4), and each AI generation records `keySource` + `keyHint`. Default models are `gpt-4.1-mini` and `gemini-2.5-flash`; nano and flash-lite drop chosen types.
 
-### 1. Pages: crawl (`POST /sites/:id/crawls` → `crawl()` in `src/routes/workspaces.js`)
+### UI flow (five tabs, any tab can be opened at any time)
+**1 Crawl → 2 Choose (pages, Rules/AI, types) → 3 Generate → 4 Review (Compare: live JSON-LD vs new, line diff) → 5 Publish (one button; Undo).** There are no policy, preview or acknowledgement options in the UI: Publish sends `direct: true`, which the server runs as `replace-existing` without a separate preview. Opening a run lands on Review if it has schema (`resetWizard`), so schema from earlier runs can be published straight away. `GET /runs/:id/live` returns the page's current public JSON-LD for Compare. The older preview/policy API (`dryRun`, `schemaPolicy`, `acknowledgeConflicts`) still exists for the tests.
+
+### 1. Crawl (`POST /sites/:id/crawls` → `crawl()` in `src/routes/workspaces.js`)
 - **Discovery** tries each source in order and never fails the run: manual URLs → given sitemap → WordPress REST (`wp/v2/types` + each type) → sitemap found via robots.txt or common paths → homepage links → homepage only. Problems are recorded as `discoveryWarning`.
 - **Fetching each page** (`crawlPages()`):
   - Public fetch first (`pageScraper.fetchWithRetry`). It starts with an honest crawler User-Agent, because CDNs like Automattic's a8c-cdn return 403 to fake-Chrome requests from servers, then tries a plain request, then browser headers.
@@ -20,9 +23,6 @@ Live at https://schemagenerator.onpurposemedia.com (Docker on this host, behind 
   - `pageScraper.parse()` extracts title, content, headings, FAQs, breadcrumbs, phone, service areas, canonical, and existing JSON-LD.
   - A page fails only if both routes fail. **Retry failed pages** (`POST /runs/:id/recrawl`) re-crawls just those.
 - The page's original JSON-LD is backed up (`original`).
-
-### 2. Action
-Choose **Create new schema** or **Delete existing schema** (delete skips straight to a removal preview).
 
 ### 3. Review: generate (`POST /runs/:id/generate`, `engine: 'rules' | 'ai'`; rules is the default)
 **Rules engine** (`schemaBuilder.js`, no AI, needs a saved profile):
@@ -40,7 +40,7 @@ Choose **Create new schema** or **Delete existing schema** (delete skips straigh
 - `validate()` checks for an error-free graph about this URL and not noindex. It warns about a canonical that points elsewhere, content read via the API, and types the AI couldn't produce.
 - The generated version is backed up (`generated`). A dry-run publish preview then runs automatically.
 
-### 4. Apply: publish (`POST /runs/:id/publish`)
+### 5. Publish (`POST /runs/:id/publish`, background job with `progress`; UI polls)
 - **Preview** (`dryRun: true`): snapshots WordPress's stored value and the live public JSON-LD, then `schemaDecision.assess()` applies the chosen policy:
   - `replace-existing` (default): suppress Rank Math's page graph and output ours.
   - `review`: add ours alongside Rank Math's.

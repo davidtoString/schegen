@@ -32,110 +32,83 @@
       </section>
 
       <nav class="wizard-steps" aria-label="Workflow steps">
-        <button type="button" class="wizard-step" data-step="pages"><span class="wizard-step-number">1</span><span class="wizard-step-label">Pages</span></button>
-        <button type="button" class="wizard-step" data-step="action"><span class="wizard-step-number">2</span><span class="wizard-step-label">Action</span></button>
-        <button type="button" class="wizard-step" data-step="review"><span class="wizard-step-number">3</span><span class="wizard-step-label">Review</span></button>
-        <button type="button" class="wizard-step" data-step="apply"><span class="wizard-step-number">4</span><span class="wizard-step-label">Apply</span></button>
+        <button type="button" class="wizard-step" data-step="crawl"><span class="wizard-step-number">1</span><span class="wizard-step-label">Crawl</span></button>
+        <button type="button" class="wizard-step" data-step="choose"><span class="wizard-step-number">2</span><span class="wizard-step-label">Choose</span></button>
+        <button type="button" class="wizard-step" data-step="generate"><span class="wizard-step-number">3</span><span class="wizard-step-label">Generate</span></button>
+        <button type="button" class="wizard-step" data-step="review"><span class="wizard-step-number">4</span><span class="wizard-step-label">Review</span></button>
+        <button type="button" class="wizard-step" data-step="publish"><span class="wizard-step-number">5</span><span class="wizard-step-label">Publish</span></button>
       </nav>
 
-      <section class="card step-card" data-wizard-step="pages">
-        <h3>Select pages</h3>
-        <p>Fetch published content from this site, then choose which pages to work with below.</p>
-        <label for="page-filter">Content to include</label>
-        <select id="page-filter"><option value="all">All published content</option><option value="pages">Pages only</option><option value="posts">Posts only</option></select>
-        <details class="workspace-options"><summary>Choose a sitemap or specific URLs</summary>
-        <label for="sitemap-url">Sitemap URL <small>(optional)</small></label>
-        <input id="sitemap-url" type="url" placeholder="https://example.com/sitemap_index.xml">
-        <label for="manual-urls">Specific page URLs <small>(optional, one per line)</small></label>
+      <section class="card step-card" data-wizard-step="crawl">
+        <h3>Crawl the site</h3>
+        <p>Schematic reads the site's published pages. They appear in the list below.</p>
+        <details class="workspace-options"><summary>Only specific pages</summary>
+        <label for="manual-urls">Page URLs <small>(one per line)</small></label>
         <textarea id="manual-urls" rows="3" placeholder="https://example.com/about/"></textarea>
+        <label for="sitemap-url">Or a sitemap URL</label>
+        <input id="sitemap-url" type="url" placeholder="https://example.com/sitemap_index.xml">
         </details>
-        <div class="summary-actions" style="justify-content:flex-start"><button class="btn btn-primary" id="start-crawl">Crawl site</button><button class="btn btn-secondary" id="recrawl-failed" hidden>Resume / retry pages</button></div>
-        <p class="muted selection-hint"></p>
         <div class="summary-actions">
-          <button class="btn btn-primary" id="pages-continue" disabled>Continue →</button>
+          <button class="btn btn-primary" id="start-crawl">Crawl site</button>
+          <button class="btn btn-secondary" id="recrawl-failed" hidden>Resume / retry pages</button>
+          <button class="btn btn-secondary step-next" data-next="choose" id="crawl-continue" disabled>Next: choose pages →</button>
         </div>
       </section>
 
-      <section class="card step-card" data-wizard-step="action" hidden>
-        <h3>What do you want to do?</h3>
-        <p class="muted selection-hint"></p>
-        <div class="action-choice">
-          <button type="button" class="action-card" id="choose-create">
-            <strong>Create new schema</strong>
-            <span>AI generates JSON-LD for the selected pages, then you review and publish it.</span>
-          </button>
-          <button type="button" class="action-card" id="choose-delete">
-            <strong>Delete existing schema</strong>
-            <span>Remove app-published schema from the selected pages (reversible).</span>
-          </button>
+      <section class="card step-card" data-wizard-step="choose" hidden>
+        <h3>Choose pages and schema types</h3>
+        <p>Tick the pages to create schema for in the list below, then set their types.</p>
+        <div class="engine-choice" role="radiogroup" aria-label="How to build the schema">
+          <label class="engine-option"><input type="radio" name="engine" value="rules" checked><span><strong>Rules</strong><small>Built from your business profile and page rules, with names, FAQs and details copied exactly from each page.</small></span></label>
+          <label class="engine-option"><input type="radio" name="engine" value="ai"><span><strong>AI</strong><small>Written by AI from each page's content, in any schema.org types you choose.</small></span></label>
         </div>
-        <div class="summary-actions"><button type="button" class="btn btn-secondary" id="action-back">← Back</button></div>
+        <fieldset class="type-picker" id="ai-type-picker">
+          <legend>Schema types</legend>
+          <p class="muted" id="type-picker-hint"></p>
+          <div id="type-options" class="type-options"></div>
+          <details class="more-types" id="type-more"><summary>More schema.org types <span class="more-count"></span></summary><input type="search" class="more-filter" placeholder="Filter types…" aria-label="Filter types"><div class="more-options"></div></details>
+          <button type="button" class="btn btn-secondary" id="apply-types">Use these types for the ticked pages</button>
+        </fieldset>
+        <p class="muted selection-hint"></p>
+        <div class="summary-actions"><button class="btn btn-primary step-next" data-next="generate" id="choose-continue" disabled>Next: generate →</button></div>
+      </section>
+
+      <section class="card step-card" data-wizard-step="generate" hidden>
+        <h3>Generate schema</h3>
+        <p id="generate-summary">Schematic creates schema for the ticked pages.</p>
+        <div id="ai-fields" hidden>
+          <label for="ai-provider">Provider</label><select id="ai-provider"><option value="openai">OpenAI</option><option value="gemini">Gemini</option></select>
+          <p id="ai-configuration-status" class="muted"></p>
+          <label for="ai-model-choice">Model</label><select id="ai-model-choice"><option value="">Loading model settings…</option></select>
+          <label id="ai-model-custom" hidden>Custom model ID<input id="ai-model" placeholder="Exact model ID for this provider"></label>
+        </div>
+        <p class="muted selection-hint"></p>
+        <div class="summary-actions"><button class="btn btn-primary" id="generate-run" disabled>Generate schema</button></div>
       </section>
 
       <section class="card step-card" data-wizard-step="review" hidden>
-        <div id="review-create-panel">
-          <h3>Generate schema</h3>
-          <div class="engine-choice" role="radiogroup" aria-label="How to build the schema">
-            <label class="engine-option"><input type="radio" name="engine" value="rules" checked><span><strong>Rules</strong><small>Built from your business profile and page rules, with names, FAQs and details copied exactly from each page.</small></span></label>
-            <label class="engine-option"><input type="radio" name="engine" value="ai"><span><strong>AI</strong><small>Written by AI from each page's content, in any schema.org types you choose.</small></span></label>
-          </div>
-          <p class="muted" id="rules-hint">Each page gets the types its kind is set to in <strong>Business profile → Page rules</strong>. Use <strong>Types</strong> on a row to change one page.</p>
-          <div id="ai-fields" hidden>
-            <label for="ai-provider">Provider</label><select id="ai-provider"><option value="openai">OpenAI</option><option value="gemini">Gemini</option></select>
-            <p id="ai-configuration-status" class="muted"></p>
-            <label for="ai-model-choice">Model</label><select id="ai-model-choice"><option value="">Loading model settings…</option></select>
-            <label id="ai-model-custom" hidden>Custom model ID<input id="ai-model" placeholder="Exact model ID for this provider"></label>
-          </div>
-          <fieldset class="type-picker" id="ai-type-picker" hidden>
-            <legend>Schema types to generate</legend>
-            <p class="muted">Pick the types for the selected pages, or leave all unchecked to let the AI choose. Use <strong>Types</strong> on a row to set one page differently.</p>
-            <div id="type-options" class="type-options"></div>
-            <details class="more-types" id="type-more"><summary>More schema.org types <span class="more-count"></span></summary><input type="search" class="more-filter" placeholder="Filter types…" aria-label="Filter types"><div class="more-options"></div></details>
-            <button type="button" class="btn btn-secondary" id="apply-types">Use these types for selected pages</button>
-          </fieldset>
-          <button class="btn btn-primary" id="generate-run" disabled>Generate schema</button>
-        </div>
-        <div id="review-delete-panel" hidden>
-          <h3>Confirm removal</h3>
-          <p>Confirm the pages below, then preview removal. Nothing is written to WordPress until you apply on the next step.</p>
-        </div>
-        <div id="schema-policy-group">
-          <label for="schema-policy">If a page already has schema</label>
-          <select id="schema-policy">
-            <option value="replace-existing">Replace it with the new schema</option>
-            <option value="keep">Keep existing — skip pages that already have schema</option>
-            <option value="replace-managed">Replace only the app's previous schema</option>
-            <option value="remove-existing" hidden>Remove schema from this page</option>
-            <option value="review">Advanced: keep Rank Math output and add app schema</option>
-          </select>
-          <p class="muted">Replace/remove requires Connector 1.2+. It suppresses Rank Math output on selected pages, preserving its underlying settings for Undo. Other plugins' schema is not removed.</p>
-        </div>
+        <h3>Review the schema</h3>
+        <p>Click <strong>Compare</strong> on a page to see the schema on the site now next to the new schema. Untick any page you don't want to publish.</p>
         <p class="muted selection-hint"></p>
-        <div class="summary-actions">
-          <button type="button" class="btn btn-secondary" id="review-back">← Back</button>
-          <button class="btn btn-secondary" id="preview-publish" disabled>Preview changes</button>
-          <button class="btn btn-primary" id="review-continue" disabled>Continue to Apply →</button>
-        </div>
+        <div class="summary-actions"><button class="btn btn-primary step-next" data-next="publish" id="review-continue" disabled>Next: publish →</button></div>
       </section>
 
-      <section class="card step-card" data-wizard-step="apply" hidden>
-        <h3>Apply changes</h3>
-        <p class="muted">Open Review on each page below to check the before/after, then approve to write to WordPress.</p>
-        <label class="toggle-row"><input id="acknowledge-conflicts" type="checkbox">I reviewed the before/after and approve this action.</label>
+      <section class="card step-card" data-wizard-step="publish" hidden>
+        <h3>Publish to the site</h3>
+        <p>Publishing replaces each ticked page's current schema (Rank Math's) with the new schema and checks the live page. A backup is kept, and <strong>Undo</strong> puts the previous schema back.</p>
         <p class="muted selection-hint"></p>
         <div class="summary-actions">
-          <button type="button" class="btn btn-secondary" id="apply-back">← Back</button>
-          <button class="btn btn-primary" id="publish-run" disabled>Apply reviewed changes</button>
-          <button class="btn btn-secondary" id="verify-run" disabled>Verify live pages</button>
-          <button class="btn btn-secondary" id="rollback-run" disabled>Undo last change</button>
+          <button class="btn btn-primary" id="publish-run" disabled>Publish to site</button>
+          <button class="btn btn-secondary" id="rollback-run" disabled>Undo last publish</button>
         </div>
-        <h4>Use with a header code plugin instead</h4>
-        <p class="muted">Download the generated JSON-LD to paste into WPCode, Insert Headers and Footers, or a similar plugin. If you do, don't also apply it here, or the page will carry the schema twice.</p>
-        <div class="summary-actions" style="justify-content:flex-start">
-          <button class="btn btn-secondary" data-export="html">Download &lt;script&gt; tags</button>
-          <button class="btn btn-secondary" data-export="json">Download JSON</button>
-          <button class="btn btn-secondary" id="download-backups">Download all backups</button>
-        </div>
+        <details class="workspace-options"><summary>Use a header code plugin instead</summary>
+          <p class="muted">Download the schema to paste into WPCode, Insert Headers and Footers or a similar plugin. Don't also publish it here, or the page carries it twice.</p>
+          <div class="summary-actions">
+            <button class="btn btn-secondary" data-export="html">Download &lt;script&gt; tags</button>
+            <button class="btn btn-secondary" data-export="json">Download JSON</button>
+            <button class="btn btn-secondary" id="download-backups">Download all backups</button>
+          </div>
+        </details>
       </section>
 
       <section class="card run-card">
@@ -174,17 +147,15 @@
 
 <dialog id="schema-dialog" class="site-dialog">
   <div class="dialog-body">
-    <div class="dialog-heading"><h2>Schema and crawl review</h2><button id="close-schema" class="icon-button" aria-label="Close">×</button></div>
-    <p id="schema-review-url"></p>
-    <pre id="schema-review-messages" style="white-space:pre-wrap"></pre>
-    <h3>Generated JSON-LD</h3>
-    <div class="summary-actions" style="justify-content:flex-start"><button type="button" class="btn btn-secondary" id="copy-script">Copy &lt;script&gt; tag</button><button type="button" class="btn btn-secondary" id="copy-json">Copy JSON</button></div>
-    <pre id="schema-review-json" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
-      <h3>Existing JSON-LD</h3><pre id="schema-review-existing" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
-      <h3>Publish preview</h3><pre id="schema-review-decision" style="white-space:pre-wrap"></pre>
-      <div class="schema-comparison"><section><h3>Stored value before</h3><pre id="schema-review-before"></pre></section><section><h3>Proposed app schema</h3><pre id="schema-review-after"></pre></section></div>
-      <details><summary>Insertion and rollback records</summary><pre id="schema-review-records" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
-    <h3>Crawled content</h3><pre id="schema-review-content" style="white-space:pre-wrap"></pre>
+    <div class="dialog-heading"><div><span class="eyebrow">Compare</span><h2 id="schema-review-title">Schema</h2></div><button id="close-schema" class="icon-button" aria-label="Close">×</button></div>
+    <p id="schema-review-url" class="muted"></p>
+    <div id="schema-review-messages" class="review-messages" hidden></div>
+    <div class="compare-types"><div><span class="eyebrow">On the site now</span><p id="compare-before-types">…</p></div><div><span class="eyebrow">New schema</span><p id="compare-after-types">…</p></div></div>
+    <div class="compare-legend"><span class="legend-removed">Removed</span><span class="legend-added">Added</span><span id="compare-source" class="muted"></span></div>
+    <div id="schema-diff" class="schema-diff"></div>
+    <div class="summary-actions"><button type="button" class="btn btn-secondary" id="copy-script">Copy &lt;script&gt; tag</button><button type="button" class="btn btn-secondary" id="copy-json">Copy JSON</button></div>
+    <details><summary>Crawled page content</summary><pre id="schema-review-content" style="white-space:pre-wrap"></pre></details>
+    <details><summary>Publish and undo records</summary><pre id="schema-review-records" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
   </div>
 </dialog>
 

@@ -25,22 +25,22 @@ test('generic pages do not invent HVAC services; malformed and noindex graphs fa
 });
 
 test('crawl → schema → dry run → insert → public verification with a WordPress contract fixture', async t => {
-  let origin; let saved = null; let visible = true; let rejectWrite = false; let writes = 0;
+  let origin; let saved = null; let modern = false; let suppress = false; let visible = true; let rejectWrite = false; let writes = 0;
   const wp = express(); wp.use(express.json());
   wp.use('/wp-json', (req, res, next) => req.headers.authorization === `Basic ${Buffer.from('editor:password').toString('base64')}` ? next() : res.sendStatus(401));
   wp.get('/wp-json/wp/v2/types', (req, res) => res.json({ page: { rest_base: 'pages' } }));
   wp.get('/wp-json/wp/v2/pages', (req, res) => res.set('X-WP-TotalPages', '1').json([{ id: 17, link: `${origin}/parent/about`, type: 'page' }]));
   wp.get('/wp-json/schema-workspace/v1/status', (req, res) => res.json({ success: true, user: 'Editor' }));
-  wp.get('/wp-json/schema-workspace/v1/schema', (req, res) => res.json({ postId: 17, schema: saved }));
+  wp.get('/wp-json/schema-workspace/v1/schema', (req, res) => res.json({ postId: 17, schema: saved, ...(modern ? { schemaControl: 1, suppressesRankMath: suppress } : {}) }));
   wp.post('/wp-json/schema-workspace/v1/schema', (req, res) => {
     assert.ok(Object.hasOwn(req.body, 'expected'));
     assert.equal(store.listRuns()[0].pages[0].previousState.postId, 17, 'backup persisted before write');
     if (rejectWrite) return res.status(403).json({ message: 'Write forbidden' });
-    saved = req.body.schema; writes++; res.json({ success: true });
+    saved = req.body.schema; suppress = Boolean(req.body.suppressRankMath); writes++; res.json({ success: true });
   });
   wp.post('/wp-json/schema-workspace/v1/restore', (req, res) => {
     if (JSON.stringify(req.body.expected) !== JSON.stringify(saved)) return res.sendStatus(409);
-    saved = req.body.schema; res.json({ postId: 17, schema: saved });
+    saved = req.body.schema; suppress = Boolean(req.body.suppressRankMath); res.json({ postId: 17, schema: saved });
   });
   wp.get('/parent/about', (req, res) => {
     assert.equal(req.headers.authorization, undefined, 'public crawl does not leak credentials');
@@ -93,6 +93,16 @@ test('crawl → schema → dry run → insert → public verification with a Wor
   assert.equal((await request(`/runs/${id}/rollback`, 'POST', { urls })).success, true);
   assert.equal(saved, null, 'rollback removes first app insertion');
   assert.equal((await request(`/runs/${id}/rollback`, 'POST', { urls })).code, 400);
+  // One-step publish (the UI's Publish button): no preview or acknowledgement needed.
+  const writesBeforeDirect = writes;
+  modern = true; // Connector 1.2+ reports schemaControl, which replacing Rank Math output requires.
+  result = await request(`/runs/${id}/publish`, 'POST', { urls, direct: true });
+  assert.equal(result.success, true, JSON.stringify(result.results)); assert.equal(result.results[0].stored, true); assert.equal(result.results[0].verified, true);
+  assert.equal(writes, writesBeforeDirect + 1);
+  assert.equal((await request(`/runs/${id}/rollback`, 'POST', { urls })).success, true);
+  assert.equal(saved, null, 'undo after one-step publish restores the previous state');
+  assert.equal(suppress, false, 'undo turns Rank Math output back on');
+  modern = false;
   await request(`/runs/${id}/publish`, 'POST', { urls, schemaPolicy: 'replace-managed' });
   assert.equal((await request(`/runs/${id}/publish`, 'POST', { urls, schemaPolicy: 'replace-managed', dryRun: false })).success, true);
   const beforeKeep = writes;
